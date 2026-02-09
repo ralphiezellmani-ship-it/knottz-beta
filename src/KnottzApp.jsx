@@ -406,9 +406,9 @@ const MOCK_COMMENTS = {
 };
 
 export default function KnottzApp() {
-  const INVITE_REQUIRED = false; // Feature flag (turn on later)
+  const INVITE_REQUIRED = true; // Feature flag (turn on when ready)
   const [currentUser, setCurrentUser] = useState(MOCK_USERS[0]); // Inloggad som Anna
-  const [view, setView] = useState('auth'); // auth, feed, groups, profile, musthaves, tips, post, user
+  const [view, setView] = useState('auth'); // auth, guest, feed, groups, profile, musthaves, tips, post, user
   const [previousView, setPreviousView] = useState('feed');
   const [detailId, setDetailId] = useState(null);
   const [showOnboarding, setShowOnboarding] = useState(true);
@@ -416,6 +416,14 @@ export default function KnottzApp() {
   const [authMode, setAuthMode] = useState('login'); // login, signup
   const [inviteStatus, setInviteStatus] = useState({ hasInvite: false, code: '' });
   const [inviteInput, setInviteInput] = useState('');
+  const [inviteCodes, setInviteCodes] = useState([]);
+  const [inviteVerified, setInviteVerified] = useState(false);
+  const [accountType, setAccountType] = useState('family'); // family, solo
+  const [householdName, setHouseholdName] = useState('');
+  const [parentOne, setParentOne] = useState('');
+  const [parentTwo, setParentTwo] = useState('');
+  const [expectedDueDate, setExpectedDueDate] = useState('');
+  const [existingChildren, setExistingChildren] = useState([{ name: '', birthDate: '' }]);
   const [posts, setPosts] = useState(MOCK_POSTS);
   const [users, setUsers] = useState(MOCK_USERS);
   const [following, setFollowing] = useState(['2', '3']); // Anna följer Erik och Sara
@@ -470,14 +478,20 @@ export default function KnottzApp() {
   }, []);
 
   useEffect(() => {
+    const storedCodes = JSON.parse(localStorage.getItem('knottz_invite_codes') || '[]');
+    setInviteCodes(storedCodes);
+  }, []);
+
+  useEffect(() => {
     const verifyInvite = async () => {
-      if (!INVITE_REQUIRED || !supabase || !inviteStatus.code) return;
-      const { data, error } = await supabase
+      if (!INVITE_REQUIRED || !inviteStatus.code) return;
+      if (!supabase) return;
+      const { data } = await supabase
         .from('invites')
         .select('id, redeemed_at')
         .eq('code', inviteStatus.code)
         .maybeSingle();
-      if (error || !data || data.redeemed_at) {
+      if (!data || data.redeemed_at) {
         setInviteStatus({ hasInvite: false, code: '' });
         localStorage.removeItem('knottz_invite');
       }
@@ -513,9 +527,9 @@ export default function KnottzApp() {
   const myPostsCount = posts.filter(p => p.user_id === currentUser.id).length;
   const myGroupsCount = groups.filter(g => g.is_member).length;
   const myActivityScore = myPostsCount + myGroupsCount + 3;
-  const baseInvites = 2;
+  const baseInvites = 3;
   const earnedInvites = Math.floor(myActivityScore / 5);
-  const invitesAvailable = baseInvites + earnedInvites;
+  const invitesAvailable = inviteVerified ? baseInvites + earnedInvites : 0;
 
   // Hantera like/unlike
   const toggleLike = (postId) => {
@@ -642,6 +656,19 @@ export default function KnottzApp() {
     setPreviousView(view);
     setDetailId(userId);
     setView('user');
+  };
+
+  const generateInviteCode = () => {
+    const code = `KNOTTZ-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+    const updated = [...inviteCodes, code].slice(0, invitesAvailable);
+    setInviteCodes(updated);
+    localStorage.setItem('knottz_invite_codes', JSON.stringify(updated));
+  };
+
+  const canUseInvite = (code) => {
+    if (!code) return false;
+    if (inviteCodes.includes(code)) return true;
+    return code === inviteStatus.code;
   };
 
   // Gå med/lämna grupp
@@ -1181,12 +1208,81 @@ export default function KnottzApp() {
               <div className="section-subtitle">
                 {authMode === 'login'
                   ? 'Logga in med din e-post.'
-                  : 'Skapa konto med e‑post och bekräfta via Bank‑ID.'}
+                  : 'Skapa konto med e‑post och bjud in din familj.'}
               </div>
 
               <div className="stack" style={{ marginTop: '1rem' }}>
+                {INVITE_REQUIRED && authMode === 'signup' && (
+                  <input
+                    className="input"
+                    placeholder="Inbjudningskod"
+                    value={inviteInput}
+                    onChange={(e) => setInviteInput(e.target.value)}
+                  />
+                )}
                 <input className="input" placeholder="E‑post" />
                 <input className="input" placeholder="Lösenord" type="password" />
+                {authMode === 'signup' && (
+                  <div className="soft-panel">
+                    <div style={{ fontWeight: 700, marginBottom: '0.5rem' }}>Kontotyp</div>
+                    <div className="subnav">
+                      <button
+                        className={`btn ${accountType === 'family' ? 'btn-primary' : 'btn-soft'}`}
+                        onClick={() => setAccountType('family')}
+                      >
+                        Familj/Par
+                      </button>
+                      <button
+                        className={`btn ${accountType === 'solo' ? 'btn-primary' : 'btn-soft'}`}
+                        onClick={() => setAccountType('solo')}
+                      >
+                        Ensam
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {authMode === 'signup' && (
+                  <div className="stack">
+                    <input className="input" placeholder="Hushållsnamn (ex. Familjen Karlsson)" value={householdName} onChange={(e) => setHouseholdName(e.target.value)} />
+                    <input className="input" placeholder="Förälder 1 - namn" value={parentOne} onChange={(e) => setParentOne(e.target.value)} />
+                    {accountType === 'family' && (
+                      <input className="input" placeholder="Förälder 2 - namn (valfritt)" value={parentTwo} onChange={(e) => setParentTwo(e.target.value)} />
+                    )}
+                    <label style={{ fontWeight: 600 }}>Beräknat datum för barnet</label>
+                    <input className="input" type="date" value={expectedDueDate} onChange={(e) => setExpectedDueDate(e.target.value)} />
+                    <label style={{ fontWeight: 600 }}>Har ni fler barn redan?</label>
+                    {existingChildren.map((child, idx) => (
+                      <div key={idx} className="grid-2">
+                        <input
+                          className="input"
+                          placeholder="Barnets namn"
+                          value={child.name}
+                          onChange={(e) => {
+                            const next = [...existingChildren];
+                            next[idx].name = e.target.value;
+                            setExistingChildren(next);
+                          }}
+                        />
+                        <input
+                          className="input"
+                          type="date"
+                          value={child.birthDate}
+                          onChange={(e) => {
+                            const next = [...existingChildren];
+                            next[idx].birthDate = e.target.value;
+                            setExistingChildren(next);
+                          }}
+                        />
+                      </div>
+                    ))}
+                    <button
+                      className="btn btn-soft"
+                      onClick={() => setExistingChildren([...existingChildren, { name: '', birthDate: '' }])}
+                    >
+                      Lägg till barn
+                    </button>
+                  </div>
+                )}
                 {authMode === 'signup' && (
                   <div className="soft-panel">
                     <div style={{ fontWeight: 700, marginBottom: '0.5rem' }}>Bank‑ID</div>
@@ -1198,10 +1294,24 @@ export default function KnottzApp() {
                     </button>
                   </div>
                 )}
+                {authMode === 'signup' && (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.9rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={inviteVerified}
+                      onChange={(e) => setInviteVerified(e.target.checked)}
+                    />
+                    Jag har blivit verifierad av den som bjöd in mig
+                  </label>
+                )}
                 <button
                   className="btn btn-primary"
                   onClick={() => {
+                    if (INVITE_REQUIRED && authMode === 'signup' && !canUseInvite(inviteInput)) return;
                     setIsAuthenticated(true);
+                    if (authMode === 'signup' && canUseInvite(inviteInput)) {
+                      setInviteVerified(true);
+                    }
                     setView('feed');
                   }}
                 >
@@ -1213,13 +1323,7 @@ export default function KnottzApp() {
                 >
                   {authMode === 'login' ? 'Skapa konto' : 'Jag har redan konto'}
                 </button>
-                <button
-                  className="btn btn-ghost"
-                  onClick={() => {
-                    setIsAuthenticated(true);
-                    setView('feed');
-                  }}
-                >
+                <button className="btn btn-ghost" onClick={() => setView('guest')}>
                   Fortsätt som gäst
                 </button>
               </div>
@@ -1546,6 +1650,71 @@ export default function KnottzApp() {
           </div>
         )}
 
+        {/* GUEST VIEW */}
+        {view === 'guest' && (
+          <div>
+            <div className="section card fade-in">
+              <h2 className="section-title">Välkommen till Knottz</h2>
+              <div className="section-subtitle">
+                Du är i gästläge och kan läsa bloggar och se topplistor samt statistik.
+              </div>
+              <button className="btn btn-primary" onClick={() => setView('auth')}>
+                Skapa konto / Logga in
+              </button>
+            </div>
+
+            <div className="section grid-2 fade-in">
+              <div className="card">
+                <h3 style={{ marginBottom: '0.75rem' }}>Toppröstade Must Haves</h3>
+                <div className="stack">
+                  {trendingMustHaves.map(item => (
+                    <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem' }}>
+                      <div>
+                        <div style={{ fontWeight: 700 }}>{item.title}</div>
+                        <div style={{ fontSize: '0.85rem', color: '#6c6b7a' }}>{item.category}</div>
+                      </div>
+                      <span className="chip">🔥 {item.upvotes}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="card">
+                <h3 style={{ marginBottom: '0.75rem' }}>Populära tips</h3>
+                <div className="stack">
+                  {trendingTips.map(tip => (
+                    <div key={tip.id} style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem' }}>
+                      <div>
+                        <div style={{ fontWeight: 700 }}>{tip.title}</div>
+                        <div style={{ fontSize: '0.85rem', color: '#6c6b7a' }}>{tip.category}</div>
+                      </div>
+                      <span className="chip">✨ {tip.helpful_count}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="section card fade-in">
+              <h3 style={{ marginBottom: '0.75rem' }}>Statistik</h3>
+              <div className="grid-3">
+                <div className="stat-card">
+                  <div className="stat-value">{COMMUNITY_STATS.births_2026}</div>
+                  <div>Födslar i år</div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-value">{COMMUNITY_STATS.births_2025}</div>
+                  <div>Födslar förra året</div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-value">{COMMUNITY_STATS.expecting_boys}% / {COMMUNITY_STATS.expecting_girls}%</div>
+                  <div>Kille / Tjej</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* GROUPS VIEW */}
         {view === 'groups' && (
           <div>
@@ -1809,9 +1978,30 @@ export default function KnottzApp() {
                 <span className="chip">Tillgängliga: {invitesAvailable}</span>
                 <span className="chip">Aktivitetspoäng: {myActivityScore}</span>
               </div>
-              <button className="btn btn-soft" style={{ marginTop: '1rem' }}>
-                Skapa inbjudningskod
-              </button>
+              <div style={{ marginTop: '1rem' }} className="stack">
+                <button
+                  className="btn btn-soft"
+                  onClick={() => {
+                    if (inviteCodes.length >= invitesAvailable) return;
+                    generateInviteCode();
+                  }}
+                >
+                  Skapa inbjudningskod
+                </button>
+                {inviteCodes.length > 0 && (
+                  <div className="soft-panel">
+                    <div style={{ fontWeight: 700, marginBottom: '0.5rem' }}>Dina koder</div>
+                    <div className="stack">
+                      {inviteCodes.map(code => (
+                        <div key={code} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <code>{code}</code>
+                          <button className="btn btn-ghost" onClick={() => navigator.clipboard.writeText(code)}>Kopiera</button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
             {profileTab === 'messages' && (
