@@ -448,6 +448,7 @@ export default function KnottzApp() {
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
   const [authError, setAuthError] = useState('');
+  const adminEmails = (import.meta.env.VITE_ADMIN_EMAILS || '').split(',').map(s => s.trim()).filter(Boolean);
   const [posts, setPosts] = useState(MOCK_POSTS);
   const [users, setUsers] = useState(MOCK_USERS);
   const [following, setFollowing] = useState(['2', '3']); // Anna följer Erik och Sara
@@ -738,6 +739,16 @@ export default function KnottzApp() {
       .single();
     if (householdErr) return setAuthError('Kunde inte spara hushåll');
 
+    let inviteRow = null;
+    if (INVITE_REQUIRED && inviteInput) {
+      const { data } = await supabase
+        .from('invites')
+        .select('id, created_by, redeemed_at')
+        .eq('code', inviteInput)
+        .maybeSingle();
+      inviteRow = data;
+    }
+
     const profile = {
       id: userId,
       household_id: householdRow.id,
@@ -746,7 +757,9 @@ export default function KnottzApp() {
       due_date: expectedDueDate || null,
       bio: '',
       avatar_url: '',
-      verified_by_inviter: inviteVerified,
+      verified_by_inviter: Boolean(inviteRow?.created_by),
+      inviter_id: inviteRow?.created_by || null,
+      is_admin: adminEmails.includes(authEmail),
     };
     const { error: profileErr } = await supabase.from('profiles').insert(profile);
     if (profileErr) return setAuthError('Kunde inte spara profil');
@@ -762,7 +775,7 @@ export default function KnottzApp() {
       await supabase.from('children').insert(childrenRows);
     }
 
-    if (INVITE_REQUIRED) {
+    if (INVITE_REQUIRED && inviteRow?.id) {
       await supabase
         .from('invites')
         .update({ redeemed_at: new Date().toISOString(), redeemed_by: userId })
@@ -1416,14 +1429,9 @@ export default function KnottzApp() {
                   </div>
                 )}
                 {authMode === 'signup' && (
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.9rem' }}>
-                    <input
-                      type="checkbox"
-                      checked={inviteVerified}
-                      onChange={(e) => setInviteVerified(e.target.checked)}
-                    />
-                    Jag har blivit verifierad av den som bjöd in mig
-                  </label>
+                  <div style={{ fontSize: '0.9rem', color: '#666' }}>
+                    Din inbjudan kopplas till den som bjöd in dig automatiskt.
+                  </div>
                 )}
                 <button className="btn btn-primary" onClick={() => (authMode === 'login' ? signIn() : signUp())}>
                   {authMode === 'login' ? 'Logga in' : 'Skapa konto'}
@@ -2035,6 +2043,7 @@ export default function KnottzApp() {
                 <span className="chip">📅 {new Date(currentUser.due_date).toLocaleDateString('sv-SE', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
                 <span className="chip">{posts.filter(p => p.user_id === currentUser.id).length} inlägg</span>
                 <span className="chip">{following.length} följer</span>
+                {adminEmails.includes(authEmail) && <span className="chip">Admin</span>}
               </div>
             </div>
 

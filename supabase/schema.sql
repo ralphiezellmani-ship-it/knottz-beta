@@ -15,6 +15,8 @@ create table if not exists public.profiles (
   bio text default '',
   avatar_url text default '',
   verified_by_inviter boolean default false,
+  inviter_id uuid,
+  is_admin boolean default false,
   created_at timestamp with time zone default now()
 );
 
