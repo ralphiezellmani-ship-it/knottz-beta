@@ -1,0 +1,14 @@
+/* Minimal global reset for Knottz */
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #fff;
+  color: #222;
+}
