@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="420" viewBox="0 0 720 420">
+  <rect width="720" height="420" fill="#ffffff"/>
+  <rect x="40" y="40" width="640" height="60" rx="16" fill="#f9fafb" stroke="#e5e7eb"/>
+  <rect x="40" y="120" width="640" height="80" rx="16" fill="#ffffff" stroke="#e5e7eb"/>
+  <rect x="40" y="210" width="640" height="80" rx="16" fill="#ffffff" stroke="#e5e7eb"/>
+  <rect x="40" y="300" width="640" height="80" rx="16" fill="#ffffff" stroke="#e5e7eb"/>
+  <text x="60" y="78" font-family="Arial" font-size="18" fill="#111827">Övrigt</text>
+  <text x="60" y="160" font-family="Arial" font-size="14" fill="#6b7280">Grupper, marknadsplats, humor</text>
+</svg>

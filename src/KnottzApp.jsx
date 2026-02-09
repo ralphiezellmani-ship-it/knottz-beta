@@ -7,7 +7,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
-import { Heart, MessageCircle, Plus, Send, Edit, Search, Image as ImageIcon } from 'lucide-react';
+import { Heart, MessageCircle, Plus, Send, Edit, Search, Image as ImageIcon, Settings, LogOut } from 'lucide-react';
 
 // Mock data - i produktionen kommer detta från Supabase
 const MOCK_USERS = [
@@ -15,33 +15,36 @@ const MOCK_USERS = [
     id: '1',
     username: 'anna_svensson',
     full_name: 'Anna Svensson',
-    bio: 'Första barnet! Nervös men glad 💕',
+    bio: 'Första barnet, nervös men glad.',
     due_date: '2025-08-15',
     current_week: 24,
-    avatar_url: '👩‍🦰',
+    avatar_url: 'AS',
     location: 'Stockholm',
+    household_name: 'Familjen Svensson',
     is_new_pregnancy: true,
   },
   {
     id: '2',
     username: 'erik_berg',
     full_name: 'Erik Berg',
-    bio: 'Pappa för andra gången, nu med tvillingar! 👶👶',
+    bio: 'Pappa för andra gången, nu med tvillingar.',
     due_date: '2025-09-20',
     current_week: 20,
-    avatar_url: '👨',
+    avatar_url: 'EB',
     location: 'Malmö',
+    household_name: 'Familjen Berg',
     is_new_pregnancy: false,
   },
   {
     id: '3',
     username: 'sara_lindgren',
     full_name: 'Sara Lindgren',
-    bio: 'Älskar att dela tips om graviditet 🌸',
+    bio: 'Älskar att dela tips om graviditet.',
     due_date: '2025-07-10',
     current_week: 28,
-    avatar_url: '👩',
+    avatar_url: 'SL',
     location: 'Göteborg',
+    household_name: 'Lindgren & Co',
     is_new_pregnancy: false,
   },
   {
@@ -51,8 +54,9 @@ const MOCK_USERS = [
     bio: 'Väntande pappa från Göteborg',
     due_date: '2025-10-05',
     current_week: 16,
-    avatar_url: '👨‍🦱',
+    avatar_url: 'JK',
     location: 'Göteborg',
+    household_name: 'Familjen Karlsson',
     is_new_pregnancy: true,
   },
 ];
@@ -223,6 +227,24 @@ const MOCK_BLOGS = [
     created_at: '2025-01-20T14:15:00',
   },
 ];
+
+const MOCK_SCREENSHOTS = [
+  { id: 's1', title: 'Flödet', src: '/mock-feed.svg' },
+  { id: 's2', title: 'Vänner som väntar', src: '/mock-friends.svg' },
+  { id: 's3', title: 'Övrigt · Grupper', src: '/mock-groups.svg' },
+  { id: 's4', title: 'Din profil', src: '/mock-profile.svg' },
+];
+
+const MOCK_FRIEND_SUGGESTIONS = [
+  { id: 'fs1', name: 'Elsa Nyström', mutuals: 4 },
+  { id: 'fs2', name: 'Lukas Holm', mutuals: 2 },
+  { id: 'fs3', name: 'Maja Ek', mutuals: 5 },
+];
+
+const MOCK_SAVED_POSTS = [
+  { id: 'sp1', title: 'Checklistan inför BB', type: 'Tips', created_at: '2025-01-28' },
+  { id: 'sp2', title: 'Bästa babynestet 2024', type: 'Must have', created_at: '2025-02-02' },
+];
 // Mock Giveaways (Skänk bort)
 const MOCK_GIVEAWAYS = [
   {
@@ -325,39 +347,53 @@ const MOCK_DAD_JOKES = [
   },
 ];
 
-// Community stats & month info (placeholder data)
+// SCB/Skatteverket statistik (2024)
+const SCB_STATS = {
+  births_2024_total: 98451,
+  births_2024_boys: 50636,
+  births_2024_girls: 47815,
+  boys_per_100_girls: 106,
+};
+
+const POPULAR_NAMES_2024 = {
+  girls: ['Alma', 'Olivia', 'Vera'],
+  boys: ['Noah', 'William', 'Liam'],
+};
+
+// Community stats (visas i appen)
 const COMMUNITY_STATS = {
   total_members: 1246,
-  expecting_boys: 48,
-  expecting_girls: 52,
-  births_2025: 312,
-  births_2026: 289,
+  births_2024: SCB_STATS.births_2024_total,
+  births_boys: SCB_STATS.births_2024_boys,
+  births_girls: SCB_STATS.births_2024_girls,
 };
 
 const MONTH_GUIDE = [
-  { month: 'Januari', summary: 'Ny start och rutiner. Fokus på vila och närhet.' },
-  { month: 'Februari', summary: 'Sömnmönster börjar sätta sig. Kortare promenader rekommenderas.' },
-  { month: 'Mars', summary: 'Mer aktivitet och ökad nyfikenhet. Bra tid för baby-proofing.' },
-  { month: 'April', summary: 'Utomhusaktiviteter och sociala träffar blir lättare.' },
-  { month: 'Maj', summary: 'Utveckling av motorik och hand-öga-koordination.' },
-  { month: 'Juni', summary: 'Mer skratt och tydligare personlighet. Skapa enkla rutiner.' },
-  { month: 'Juli', summary: 'Matintroduktion och smakexploration.' },
-  { month: 'Augusti', summary: 'Stabilare dygnsrytm, bra läge för vardagsstruktur.' },
-  { month: 'September', summary: 'Rörelseglädje, låga hinder och trygg miljö.' },
-  { month: 'Oktober', summary: 'Språk och ljud börjar utvecklas mer.' },
-  { month: 'November', summary: 'Trygga rutiner och mycket närhet i mörkret.' },
-  { month: 'December', summary: 'Familjetid, lugnare tempo och enkla traditioner.' },
+  { month: 'Januari', summary: 'Stenbocken: struktur, tålamod och lugn start.' },
+  { month: 'Februari', summary: 'Vattumannen: nyfikenhet, rutiner och idéer.' },
+  { month: 'Mars', summary: 'Fiskarna/Väduren: känslor, energi och omtanke.' },
+  { month: 'April', summary: 'Väduren: mod, snabb utveckling och aktivitet.' },
+  { month: 'Maj', summary: 'Oxen: trygghet, närhet och stabilitet.' },
+  { month: 'Juni', summary: 'Tvillingarna: kommunikation och nyfikenhet.' },
+  { month: 'Juli', summary: 'Kräftan: tryggt hem, mjuka rutiner.' },
+  { month: 'Augusti', summary: 'Lejonet: värme, lek och självkänsla.' },
+  { month: 'September', summary: 'Jungfrun: ordning, små vanor som sitter.' },
+  { month: 'Oktober', summary: 'Vågen: balans, harmoni och gemenskap.' },
+  { month: 'November', summary: 'Skorpionen: djup närhet och fokus.' },
+  { month: 'December', summary: 'Skytten: nyfikenhet, glädje och upptäckarlust.' },
 ];
 
 const MOCK_POSTS = [
   {
     id: '1',
     user_id: '3',
-    content: 'Någon mer som inte kan sluta äta pickles? 🥒😅 Cravinget är på en helt annan nivå nu!',
+    content: 'Någon mer som inte kan sluta äta pickles? Cravinget är på en helt annan nivå nu.',
     likes_count: 12,
     comments_count: 5,
     created_at: '2025-02-05T10:30:00',
     liked_by_me: false,
+    visibility: 'public',
+    media: [],
   },
   {
     id: '2',
@@ -367,15 +403,19 @@ const MOCK_POSTS = [
     comments_count: 8,
     created_at: '2025-02-05T09:15:00',
     liked_by_me: true,
+    visibility: 'public',
+    media: [],
   },
   {
     id: '3',
     user_id: '2',
-    content: 'Tips på bra barnvagnar för tvillingar? Vi är helt vilse i djungeln av alternativ! 🤯',
+    content: 'Tips på bra barnvagnar för tvillingar? Vi är helt vilse i djungeln av alternativ.',
     likes_count: 7,
     comments_count: 12,
     created_at: '2025-02-04T18:45:00',
     liked_by_me: false,
+    visibility: 'public',
+    media: [],
   },
 ];
 
@@ -414,7 +454,7 @@ const MOCK_MESSAGES = {
 
 const MOCK_COMMENTS = {
   '1': [
-    { id: 'c1', user_id: '1', content: 'Haha samma här! Pickles och glass 🍦', created_at: '2025-02-05T11:00:00' },
+    { id: 'c1', user_id: '1', content: 'Haha samma här! Pickles och glass.', created_at: '2025-02-05T11:00:00' },
     { id: 'c2', user_id: '4', content: 'För mig är det chipsen som gäller', created_at: '2025-02-05T11:30:00' },
   ],
   '2': [
@@ -427,12 +467,11 @@ const MOCK_COMMENTS = {
 };
 
 export default function KnottzApp() {
-  const INVITE_REQUIRED = false; // Invite-only for signup (temporarily off)
+  const INVITE_REQUIRED = true; // Invite-only for signup
   const [currentUser, setCurrentUser] = useState(MOCK_USERS[0]); // Inloggad som Anna
   const [view, setView] = useState('auth'); // auth, guest, feed, groups, profile, musthaves, tips, post, user
   const [previousView, setPreviousView] = useState('feed');
   const [detailId, setDetailId] = useState(null);
-  const [showOnboarding, setShowOnboarding] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authMode, setAuthMode] = useState('login'); // login, signup
   const [inviteStatus, setInviteStatus] = useState({ hasInvite: false, code: '' });
@@ -440,6 +479,7 @@ export default function KnottzApp() {
   const [inviteCodes, setInviteCodes] = useState([]);
   const [inviteVerified, setInviteVerified] = useState(false);
   const [accountType, setAccountType] = useState('family'); // family, solo
+  const [profilePrivacy, setProfilePrivacy] = useState('public'); // public, private
   const [householdName, setHouseholdName] = useState('');
   const [parentOne, setParentOne] = useState('');
   const [parentTwo, setParentTwo] = useState('');
@@ -448,11 +488,15 @@ export default function KnottzApp() {
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
   const [authError, setAuthError] = useState('');
+  const [authNotice, setAuthNotice] = useState('');
+  const [menuOpen, setMenuOpen] = useState(false);
   const adminEmails = (import.meta.env.VITE_ADMIN_EMAILS || '').split(',').map(s => s.trim()).filter(Boolean);
   const [posts, setPosts] = useState(MOCK_POSTS);
   const [users, setUsers] = useState(MOCK_USERS);
   const [following, setFollowing] = useState(['2', '3']); // Anna följer Erik och Sara
   const [newPostContent, setNewPostContent] = useState('');
+  const [newPostVisibility, setNewPostVisibility] = useState('public');
+  const [newPostMedia, setNewPostMedia] = useState([]);
   const [showNewPost, setShowNewPost] = useState(false);
   const [selectedPost, setSelectedPost] = useState(null);
   const [comments, setComments] = useState(MOCK_COMMENTS);
@@ -463,6 +507,12 @@ export default function KnottzApp() {
   const [activeConversation, setActiveConversation] = useState(null);
   const [newMessage, setNewMessage] = useState('');
   const [editingProfile, setEditingProfile] = useState(false);
+  const [savedPosts, setSavedPosts] = useState(MOCK_SAVED_POSTS);
+  const [showQuickStart, setShowQuickStart] = useState(false);
+  const [showTour, setShowTour] = useState(false);
+  const [mustHaveVotes, setMustHaveVotes] = useState({});
+  const [tipVotes, setTipVotes] = useState({});
+  const [mustHaveRequests, setMustHaveRequests] = useState([]);
   
   // New features
   const [mustHaves, setMustHaves] = useState(MOCK_MUST_HAVES);
@@ -479,14 +529,6 @@ export default function KnottzApp() {
     return date.toLocaleDateString('sv-SE', { year: 'numeric', month: 'long' });
   };
 
-  // Gruppera användare per månad
-  const usersByMonth = users.reduce((acc, user) => {
-    const month = getDueMonth(user.due_date);
-    if (!acc[month]) acc[month] = [];
-    acc[month].push(user);
-    return acc;
-  }, {});
-
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const invite = params.get('invite');
@@ -501,6 +543,21 @@ export default function KnottzApp() {
       setInviteStatus({ hasInvite: true, code: stored });
     }
   }, []);
+
+  useEffect(() => {
+    const storedPrivacy = localStorage.getItem('knottz_privacy');
+    if (storedPrivacy === 'public' || storedPrivacy === 'private') {
+      setProfilePrivacy(storedPrivacy);
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('knottz_privacy', profilePrivacy);
+  }, [profilePrivacy]);
+
+  useEffect(() => {
+    setNewPostVisibility(profilePrivacy);
+  }, [profilePrivacy]);
 
   useEffect(() => {
     if (!supabase) return;
@@ -520,6 +577,19 @@ export default function KnottzApp() {
     });
     return () => authListener.subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const onboarded = localStorage.getItem('knottz_onboarded');
+    if (!onboarded) {
+      setView('profile');
+      setShowQuickStart(true);
+    }
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [view]);
 
   useEffect(() => {
     const storedCodes = JSON.parse(localStorage.getItem('knottz_invite_codes') || '[]');
@@ -557,7 +627,8 @@ export default function KnottzApp() {
   const filteredUsers = users.filter(user =>
     searchLower &&
     (user.full_name.toLowerCase().includes(searchLower) ||
-      user.username.toLowerCase().includes(searchLower))
+      user.username.toLowerCase().includes(searchLower) ||
+      (user.household_name || '').toLowerCase().includes(searchLower))
   );
 
   const trendingMustHaves = [...mustHaves]
@@ -570,9 +641,10 @@ export default function KnottzApp() {
 
   const myPostsCount = posts.filter(p => p.user_id === currentUser.id).length;
   const myGroupsCount = groups.filter(g => g.is_member).length;
-  const myActivityScore = myPostsCount + myGroupsCount + 3;
+  const votePoints = Object.keys(tipVotes).length * 1 + Object.keys(mustHaveVotes).length * 2;
+  const myActivityScore = myPostsCount * 2 + myGroupsCount * 2 + votePoints;
   const baseInvites = 3;
-  const earnedInvites = Math.floor(myActivityScore / 5);
+  const earnedInvites = Math.floor(myActivityScore / 10);
   const invitesAvailable = inviteVerified ? baseInvites + earnedInvites : 0;
 
   // Hantera like/unlike
@@ -601,10 +673,13 @@ export default function KnottzApp() {
       comments_count: 0,
       created_at: new Date().toISOString(),
       liked_by_me: false,
+      visibility: newPostVisibility,
+      media: newPostMedia,
     };
     
     setPosts([newPost, ...posts]);
     setNewPostContent('');
+    setNewPostMedia([]);
     setShowNewPost(false);
   };
 
@@ -670,7 +745,46 @@ export default function KnottzApp() {
         />
       );
     }
-    return <div style={{ fontSize: size * 0.6 }}>{user.avatar_url}</div>;
+    const initials = (user.full_name || user.username || 'KN')
+      .split(' ')
+      .map((w) => w[0])
+      .slice(0, 2)
+      .join('')
+      .toUpperCase();
+    return (
+      <div
+        style={{
+          width: size,
+          height: size,
+          borderRadius: '50%',
+          background: '#f1f5f9',
+          display: 'grid',
+          placeItems: 'center',
+          fontWeight: 700,
+          fontSize: size * 0.4,
+          color: '#111827',
+        }}
+      >
+        {initials}
+      </div>
+    );
+  };
+
+  const isProfileComplete = () => {
+    return Boolean(currentUser.bio && currentUser.due_date);
+  };
+
+  const handleNewPostMedia = (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    const readers = files.map(file => new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve({ name: file.name, url: reader.result, type: file.type });
+      reader.readAsDataURL(file);
+    }));
+    Promise.all(readers).then((items) => {
+      setNewPostMedia(items.slice(0, 4));
+    });
   };
 
   const handleAvatarChange = async (e) => {
@@ -704,6 +818,7 @@ export default function KnottzApp() {
 
   const signIn = async () => {
     setAuthError('');
+    setAuthNotice('');
     if (!supabase) return setAuthError('Supabase saknas');
     const { error } = await supabase.auth.signInWithPassword({
       email: authEmail,
@@ -712,10 +827,20 @@ export default function KnottzApp() {
     if (error) setAuthError('Fel e-post eller lösenord');
   };
 
+  const handleLogout = async () => {
+    if (supabase) {
+      await supabase.auth.signOut();
+    }
+    setIsAuthenticated(false);
+    setView('auth');
+  };
+
   const signUp = async () => {
     setAuthError('');
+    setAuthNotice('');
     if (!supabase) return setAuthError('Supabase saknas');
-    if (INVITE_REQUIRED && !canUseInvite(inviteInput)) {
+    const isAdminEmail = adminEmails.includes(authEmail);
+    if (INVITE_REQUIRED && !canUseInvite(inviteInput) && !isAdminEmail) {
       return setAuthError('Ogiltig inbjudningskod');
     }
 
@@ -724,6 +849,10 @@ export default function KnottzApp() {
       password: authPassword,
     });
     if (error || !data.user) return setAuthError('Kunde inte skapa konto');
+    if (!data.session) {
+      setAuthNotice('Verifiera via e‑post för att slutföra din registrering.');
+      return;
+    }
 
     const userId = data.user.id;
     const household = {
@@ -758,7 +887,7 @@ export default function KnottzApp() {
       display_name: parentOne || householdName || authEmail,
       bio: '',
       avatar_url: '',
-      due_date: expectedDueDate || null,
+      expected_due_date: expectedDueDate || null,
       inviter_id: inviteRow?.created_by || null,
       is_admin: adminEmails.includes(authEmail),
     };
@@ -867,6 +996,7 @@ export default function KnottzApp() {
 
   // Toggle upvote for must haves
   const toggleMustHaveVote = (id, voteType) => {
+    if (mustHaveVotes[id]) return;
     setMustHaves(mustHaves.map(item => {
       if (item.id === id) {
         if (voteType === 'up') {
@@ -879,10 +1009,12 @@ export default function KnottzApp() {
       }
       return item;
     }));
+    setMustHaveVotes({ ...mustHaveVotes, [id]: voteType });
   };
 
   // Toggle vote for tips
   const toggleTipVote = (id, voteType) => {
+    if (tipVotes[id]) return;
     setTips(tips.map(tip => {
       if (tip.id === id) {
         if (voteType === 'up') {
@@ -893,6 +1025,7 @@ export default function KnottzApp() {
       }
       return tip;
     }));
+    setTipVotes({ ...tipVotes, [id]: voteType });
   };
 
   // Claim giveaway
@@ -1007,6 +1140,31 @@ export default function KnottzApp() {
           border: 1px solid var(--border);
         }
         .user-chip:hover { filter: brightness(0.98); }
+        .menu-wrap { position: relative; }
+        .menu-panel {
+          position: absolute;
+          right: 0;
+          top: 120%;
+          background: #fff;
+          border: 1px solid var(--border);
+          border-radius: 16px;
+          min-width: 220px;
+          box-shadow: var(--shadow);
+          padding: 0.5rem;
+          z-index: 50;
+        }
+        .menu-item {
+          width: 100%;
+          text-align: left;
+          background: transparent;
+          border: none;
+          padding: 0.7rem 0.9rem;
+          border-radius: 12px;
+          cursor: pointer;
+          font-size: 0.95rem;
+          color: #111827;
+        }
+        .menu-item:hover { background: #f9fafb; }
 
         .app-nav {
           background: #ffffff;
@@ -1226,6 +1384,25 @@ export default function KnottzApp() {
           height: 70vh;
         }
 
+        .modal-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(15, 23, 42, 0.55);
+          display: grid;
+          place-items: center;
+          z-index: 200;
+          padding: 1.5rem;
+        }
+        .modal-card {
+          background: #fff;
+          border-radius: 20px;
+          width: min(920px, 95vw);
+          max-height: 90vh;
+          overflow: auto;
+          padding: 1.5rem;
+          box-shadow: var(--shadow);
+        }
+
         @media (max-width: 900px) {
           .app-main { max-width: 100%; }
           .messages-layout { grid-template-columns: 1fr; height: auto; }
@@ -1256,17 +1433,27 @@ export default function KnottzApp() {
           </div>
           
           {isAuthenticated ? (
-            <button
-              className="user-chip"
-              onClick={() => setView('profile')}
-              style={{ border: 'none', cursor: 'pointer' }}
-            >
-              {renderAvatar(currentUser, 34)}
-              <div>
-                <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{currentUser.full_name}</div>
-                <div style={{ fontSize: '0.75rem', color: '#666' }}>Vecka {currentUser.current_week}</div>
-              </div>
-            </button>
+            <div className="menu-wrap">
+              <button
+                className="user-chip"
+                onClick={() => setMenuOpen(!menuOpen)}
+                style={{ border: 'none', cursor: 'pointer' }}
+              >
+                {renderAvatar(currentUser, 34)}
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{currentUser.full_name}</div>
+                  <div style={{ fontSize: '0.75rem', color: '#666' }}>Vecka {currentUser.current_week}</div>
+                </div>
+              </button>
+              {menuOpen && (
+                <div className="menu-panel">
+                  <button className="menu-item" onClick={() => setView('profile')}>Profil</button>
+                  <button className="menu-item" onClick={() => setView('saved')}>Sparade inlägg</button>
+                  <button className="menu-item" onClick={() => setView('settings')}>Inställningar</button>
+                  <button className="menu-item" onClick={handleLogout}>Logga ut</button>
+                </div>
+              )}
+            </div>
           ) : (
             <button className="btn btn-primary" onClick={() => setView('auth')}>
               Logga in
@@ -1281,7 +1468,7 @@ export default function KnottzApp() {
           <div className="app-nav-inner">
           {[
             { id: 'feed', label: 'Flöde', icon: '' },
-            { id: 'groups', label: 'Grupper', icon: '' },
+            { id: 'groups', label: 'Övrigt', icon: '' },
             { id: 'profile', label: 'Profil', icon: '', badge: conversations.reduce((sum, c) => sum + c.unread, 0) },
           ].map(({ id, label, icon, badge }) => (
             <button
@@ -1437,6 +1624,11 @@ export default function KnottzApp() {
                 <button className="btn btn-primary" onClick={() => (authMode === 'login' ? signIn() : signUp())}>
                   {authMode === 'login' ? 'Logga in' : 'Skapa konto'}
                 </button>
+                {authNotice && (
+                  <div style={{ color: '#111827', fontSize: '0.9rem', fontWeight: 600 }}>
+                    Verifiera via e‑post.
+                  </div>
+                )}
                 {authError && (
                   <div style={{ color: '#b00020', fontSize: '0.9rem' }}>{authError}</div>
                 )}
@@ -1456,24 +1648,6 @@ export default function KnottzApp() {
         {/* FEED VIEW */}
         {view === 'feed' && (
           <div>
-            {showOnboarding && (
-              <div className="section card fade-in pulse">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: '1rem' }}>
-                  <div>
-                    <h3 style={{ marginBottom: '0.35rem' }}>Kom igång på 60 sekunder</h3>
-                    <div style={{ color: '#6c6b7a' }}>
-                      Följ grupper, lägg till BF-datum och börja dela.
-                    </div>
-                  </div>
-                  <button className="btn btn-ghost" onClick={() => setShowOnboarding(false)}>Stäng</button>
-                </div>
-                <div className="grid-3" style={{ marginTop: '1rem' }}>
-                  <div className="soft-panel">1. Följ en grupp nära dig</div>
-                  <div className="soft-panel">2. Lägg in BF-datum</div>
-                  <div className="soft-panel">3. Dela första inlägget</div>
-                </div>
-              </div>
-            )}
             <div className="section fade-in">
               <div className="search-bar">
                 <Search size={18} color="#6c6b7a" />
@@ -1504,6 +1678,9 @@ export default function KnottzApp() {
                         <div>
                           <div style={{ fontWeight: 600 }}>{user.full_name}</div>
                           <div style={{ fontSize: '0.85rem', color: '#6c6b7a' }}>@{user.username}</div>
+                          {user.household_name && (
+                            <div style={{ fontSize: '0.8rem', color: '#6c6b7a' }}>{user.household_name}</div>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -1593,9 +1770,46 @@ export default function KnottzApp() {
                     style={{ marginBottom: '1rem' }}
                     autoFocus
                   />
+                  <div className="subnav" style={{ marginBottom: '0.75rem' }}>
+                    <button
+                      className={`btn ${newPostVisibility === 'public' ? 'btn-primary' : 'btn-soft'}`}
+                      onClick={() => setNewPostVisibility('public')}
+                    >
+                      Offentligt
+                    </button>
+                    <button
+                      className={`btn ${newPostVisibility === 'private' ? 'btn-primary' : 'btn-soft'}`}
+                      onClick={() => setNewPostVisibility('private')}
+                    >
+                      Privat
+                    </button>
+                    <label className="btn btn-soft" style={{ marginLeft: 'auto' }}>
+                      Lägg till bild/video
+                      <input
+                        type="file"
+                        accept="image/*,video/*"
+                        multiple
+                        onChange={handleNewPostMedia}
+                        style={{ display: 'none' }}
+                      />
+                    </label>
+                  </div>
+                  {newPostMedia.length > 0 && (
+                    <div className="grid-3" style={{ marginBottom: '1rem' }}>
+                      {newPostMedia.map((item, idx) => (
+                        <div key={idx} className="card" style={{ padding: '0.5rem' }}>
+                          {item.type.startsWith('video') ? (
+                            <video src={item.url} controls style={{ width: '100%', borderRadius: 12 }} />
+                          ) : (
+                            <img src={item.url} alt={item.name} style={{ width: '100%', borderRadius: 12 }} />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
                     <button
-                      onClick={() => { setShowNewPost(false); setNewPostContent(''); }}
+                      onClick={() => { setShowNewPost(false); setNewPostContent(''); setNewPostMedia([]); }}
                       className="btn btn-ghost"
                     >
                       Avbryt
@@ -1636,12 +1850,28 @@ export default function KnottzApp() {
                         <div style={{ fontSize: '0.85rem', color: '#6c6b7a' }}>
                           @{author.username} · Vecka {author.current_week} · {formatTime(post.created_at)}
                         </div>
+                        <div style={{ marginTop: '0.35rem' }}>
+                          <span className="pill">{post.visibility === 'private' ? 'Privat' : 'Offentligt'}</span>
+                        </div>
                         </div>
                       </div>
 
                       <p style={{ lineHeight: 1.6, marginBottom: '1rem', fontSize: '1rem' }}>
                         {post.content}
                       </p>
+                      {post.media && post.media.length > 0 && (
+                        <div className="grid-3" style={{ marginBottom: '1rem' }}>
+                          {post.media.map((item, idx) => (
+                            <div key={idx} className="card" style={{ padding: '0.5rem' }}>
+                              {item.type && item.type.startsWith('video') ? (
+                                <video src={item.url} controls style={{ width: '100%', borderRadius: 12 }} />
+                              ) : (
+                                <img src={item.url} alt={item.name || `media-${idx}`} style={{ width: '100%', borderRadius: 12 }} />
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
 
                       <div style={{ display: 'flex', gap: '2rem', paddingTop: '1rem', borderTop: '1px solid #f0f0f0' }}>
                         <button
@@ -1745,31 +1975,6 @@ export default function KnottzApp() {
                 </div>
               </div>
             </div>
-
-            <div className="section card fade-in">
-              <h3 style={{ marginBottom: '0.75rem' }}>Vänner som väntar barn</h3>
-              <div className="stack">
-                {users.filter(u => following.includes(u.id)).map(user => (
-                  <div key={user.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div
-                      style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', cursor: 'pointer' }}
-                      onClick={() => openUserProfile(user.id)}
-                    >
-                      {renderAvatar(user, 32)}
-                      <div>
-                        <div style={{ fontWeight: 700 }}>
-                          {user.full_name} {user.is_new_pregnancy ? 'Nytt' : ''}
-                        </div>
-                        <div style={{ fontSize: '0.85rem', color: '#6c6b7a' }}>
-                          BF {new Date(user.due_date).toLocaleDateString('sv-SE')}
-                        </div>
-                      </div>
-                    </div>
-                    <button className="btn btn-soft" onClick={() => startConversation(user.id)}>Meddela</button>
-                  </div>
-                ))}
-              </div>
-            </div>
           </div>
         )}
 
@@ -1837,16 +2042,29 @@ export default function KnottzApp() {
               <h3 style={{ marginBottom: '0.75rem' }}>Statistik</h3>
               <div className="grid-3">
                 <div className="stat-card">
-                  <div className="stat-value">{COMMUNITY_STATS.births_2026}</div>
-                  <div>Födslar i år</div>
+                  <div className="stat-value">{SCB_STATS.births_2024_total}</div>
+                  <div>Födslar 2024 (SCB)</div>
                 </div>
                 <div className="stat-card">
-                  <div className="stat-value">{COMMUNITY_STATS.births_2025}</div>
-                  <div>Födslar förra året</div>
+                  <div className="stat-value">{SCB_STATS.boys_per_100_girls}</div>
+                  <div>Pojkar per 100 flickor</div>
                 </div>
                 <div className="stat-card">
-                  <div className="stat-value">{COMMUNITY_STATS.expecting_boys}% / {COMMUNITY_STATS.expecting_girls}%</div>
-                  <div>Kille / Tjej</div>
+                  <div className="stat-value">{SCB_STATS.births_2024_boys} / {SCB_STATS.births_2024_girls}</div>
+                  <div>Pojkar / Flickor</div>
+                </div>
+              </div>
+              <div className="section">
+                <h4 style={{ marginBottom: '0.5rem' }}>Populäraste namnen 2024</h4>
+                <div className="grid-2">
+                  <div className="soft-panel">
+                    <div style={{ fontWeight: 700, marginBottom: '0.4rem' }}>Flickor</div>
+                    <div style={{ color: '#6c6b7a' }}>{POPULAR_NAMES_2024.girls.join(', ')}</div>
+                  </div>
+                  <div className="soft-panel">
+                    <div style={{ fontWeight: 700, marginBottom: '0.4rem' }}>Pojkar</div>
+                    <div style={{ color: '#6c6b7a' }}>{POPULAR_NAMES_2024.boys.join(', ')}</div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1857,7 +2075,7 @@ export default function KnottzApp() {
         {view === 'groups' && (
           <div>
             <div className="section">
-              <h2 className="section-title">Grupper & Community</h2>
+              <h2 className="section-title">Övrigt</h2>
               <div className="section-subtitle">Hitta din gemenskap, byt erfarenheter och ge vidare.</div>
             </div>
 
@@ -1867,20 +2085,16 @@ export default function KnottzApp() {
                 <div>Totala medlemmar</div>
               </div>
               <div className="stat-card">
-                <div className="stat-value">{COMMUNITY_STATS.expecting_boys}%</div>
-                <div>Väntar pojke</div>
+                <div className="stat-value">{SCB_STATS.births_2024_total}</div>
+                <div>Födslar 2024 (SCB)</div>
               </div>
               <div className="stat-card">
-                <div className="stat-value">{COMMUNITY_STATS.expecting_girls}%</div>
-                <div>Väntar flicka</div>
+                <div className="stat-value">{SCB_STATS.boys_per_100_girls}</div>
+                <div>Pojkar per 100 flickor</div>
               </div>
               <div className="stat-card">
-                <div className="stat-value">{COMMUNITY_STATS.births_2025}</div>
-                <div>Födslar 2025</div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-value">{COMMUNITY_STATS.births_2026}</div>
-                <div>Födslar 2026</div>
+                <div className="stat-value">{SCB_STATS.births_2024_boys} / {SCB_STATS.births_2024_girls}</div>
+                <div>Pojkar / Flickor</div>
               </div>
             </div>
 
@@ -1958,14 +2172,10 @@ export default function KnottzApp() {
               </div>
 
               <div className="card">
-                <h3 style={{ marginBottom: '0.75rem' }}>Födslar per månad</h3>
-                <div className="stack">
-                  {Object.entries(usersByMonth).sort().map(([month, monthUsers]) => (
-                    <div key={month} style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <div>{month}</div>
-                      <span className="chip">{monthUsers.length}</span>
-                    </div>
-                  ))}
+                <h3 style={{ marginBottom: '0.75rem' }}>Säsongsmönster</h3>
+                <div style={{ color: '#6c6b7a' }}>
+                  Födslar är ofta som högst under sensommar och tidig höst enligt SCB:s
+                  sammanställningar. Vi använder detta som inspiration i appens guide.
                 </div>
               </div>
             </div>
@@ -1980,6 +2190,66 @@ export default function KnottzApp() {
                   </div>
                 ))}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* SAVED VIEW */}
+        {view === 'saved' && (
+          <div>
+            <div className="section">
+              <h2 className="section-title">Sparade inlägg</h2>
+              <div className="section-subtitle">Det du vill hitta snabbt igen.</div>
+            </div>
+            <div className="section card">
+              {savedPosts.length === 0 ? (
+                <div style={{ color: '#6c6b7a' }}>Inga sparade inlägg ännu.</div>
+              ) : (
+                <div className="stack">
+                  {savedPosts.map(item => (
+                    <div key={item.id} className="card" style={{ boxShadow: 'none', border: '1px solid var(--border)' }}>
+                      <div style={{ fontWeight: 700 }}>{item.title}</div>
+                      <div style={{ fontSize: '0.85rem', color: '#6c6b7a' }}>{item.type} · {item.created_at}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* SETTINGS VIEW */}
+        {view === 'settings' && (
+          <div>
+            <div className="section">
+              <h2 className="section-title">Inställningar</h2>
+              <div className="section-subtitle">Styr integritet och standardval.</div>
+            </div>
+            <div className="section card">
+              <h3 style={{ marginBottom: '0.75rem' }}>Profilens integritet</h3>
+              <div className="subnav">
+                <button
+                  className={`btn ${profilePrivacy === 'public' ? 'btn-primary' : 'btn-soft'}`}
+                  onClick={() => setProfilePrivacy('public')}
+                >
+                  Öppen profil
+                </button>
+                <button
+                  className={`btn ${profilePrivacy === 'private' ? 'btn-primary' : 'btn-soft'}`}
+                  onClick={() => setProfilePrivacy('private')}
+                >
+                  Privat profil
+                </button>
+              </div>
+              <div style={{ color: '#6c6b7a', marginTop: '0.75rem' }}>
+                Detta blir standarden för nya inlägg. Du kan ändra per inlägg.
+              </div>
+            </div>
+            <div className="section card">
+              <h3 style={{ marginBottom: '0.75rem' }}>Konto</h3>
+              <button className="btn btn-ghost" onClick={handleLogout}>
+                <LogOut size={16} /> Logga ut
+              </button>
             </div>
           </div>
         )}
@@ -2031,12 +2301,17 @@ export default function KnottzApp() {
                   </div>
                 </div>
 
-                <button
-                  onClick={() => setEditingProfile(!editingProfile)}
-                  className="btn btn-primary"
-                >
-                  <Edit size={18} /> Redigera profil
-                </button>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <button
+                    onClick={() => setEditingProfile(!editingProfile)}
+                    className="btn btn-primary"
+                  >
+                    <Edit size={18} /> Redigera profil
+                  </button>
+                  <button className="btn btn-soft" onClick={() => setView('settings')}>
+                    <Settings size={18} /> Inställningar
+                  </button>
+                </div>
               </div>
 
               <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
@@ -2047,6 +2322,83 @@ export default function KnottzApp() {
                 {adminEmails.includes(authEmail) && <span className="chip">Admin</span>}
               </div>
             </div>
+
+            {showQuickStart && (
+              <div className="section card fade-in">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: '1rem' }}>
+                  <div>
+                    <h3 style={{ marginBottom: '0.35rem' }}>Kom igång på 60 sek</h3>
+                    <div style={{ color: '#6c6b7a' }}>
+                      Fixa profilen, gå med i grupper och hitta vänner.
+                    </div>
+                  </div>
+                  <button className="btn btn-ghost" onClick={() => setShowQuickStart(false)}>Stäng</button>
+                </div>
+                <div className="grid-3" style={{ marginTop: '1rem' }}>
+                  <div className="soft-panel">
+                    <div style={{ fontWeight: 700, marginBottom: '0.25rem' }}>Profil</div>
+                    <div style={{ color: '#6c6b7a' }}>Lägg till bild, bio och BF‑datum.</div>
+                  </div>
+                  <div className="soft-panel">
+                    <div style={{ fontWeight: 700, marginBottom: '0.25rem' }}>Grupper</div>
+                    <div style={{ color: '#6c6b7a' }}>Gå med i populära grupper direkt.</div>
+                  </div>
+                  <div className="soft-panel">
+                    <div style={{ fontWeight: 700, marginBottom: '0.25rem' }}>Vänner</div>
+                    <div style={{ color: '#6c6b7a' }}>Hitta familjer du känner.</div>
+                  </div>
+                </div>
+
+                <div className="section grid-2">
+                  <div className="card" style={{ boxShadow: 'none', border: '1px solid var(--border)' }}>
+                    <h4 style={{ marginBottom: '0.5rem' }}>Populära grupper</h4>
+                    <div className="stack">
+                      {groups.slice(0, 3).map(group => (
+                        <div key={group.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div>
+                            <div style={{ fontWeight: 700 }}>{group.name}</div>
+                            <div style={{ fontSize: '0.85rem', color: '#6c6b7a' }}>{group.members} medlemmar</div>
+                          </div>
+                          <button className="btn btn-outline" onClick={() => toggleGroupMembership(group.id)}>
+                            {group.is_member ? 'Följer' : 'Gå med'}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="card" style={{ boxShadow: 'none', border: '1px solid var(--border)' }}>
+                    <h4 style={{ marginBottom: '0.5rem' }}>Vänförslag</h4>
+                    <div className="stack">
+                      {MOCK_FRIEND_SUGGESTIONS.map(friend => (
+                        <div key={friend.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div>
+                            <div style={{ fontWeight: 700 }}>{friend.name}</div>
+                            <div style={{ fontSize: '0.85rem', color: '#6c6b7a' }}>{friend.mutuals} gemensamma</div>
+                          </div>
+                          <button className="btn btn-outline">Lägg till</button>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ marginTop: '0.75rem', color: '#6c6b7a', fontSize: '0.85rem' }}>
+                      Koppla telefon eller Facebook för fler förslag.
+                    </div>
+                  </div>
+                </div>
+
+                <div className="section" style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                  <button className="btn btn-soft" onClick={() => setShowTour(true)}>Se hur appen funkar</button>
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => {
+                      localStorage.setItem('knottz_onboarded', '1');
+                      setShowQuickStart(false);
+                    }}
+                  >
+                    Jag är klar
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div className="section subnav">
               {[
@@ -2078,6 +2430,9 @@ export default function KnottzApp() {
                           <div style={{ fontSize: '0.85rem', color: '#6c6b7a', marginBottom: '0.5rem' }}>
                             {formatTime(post.created_at)}
                           </div>
+                          <span className="pill" style={{ marginBottom: '0.5rem' }}>
+                            {post.visibility === 'private' ? 'Privat' : 'Offentligt'}
+                          </span>
                           <p style={{ lineHeight: 1.6 }}>{post.content}</p>
                         </div>
                       ))
@@ -2109,9 +2464,32 @@ export default function KnottzApp() {
             </div>
 
             <div className="section card">
+              <h3 style={{ marginBottom: '0.75rem' }}>Vänner som väntar barn</h3>
+              <div className="stack">
+                {users.filter(u => following.includes(u.id)).map(user => (
+                  <div key={user.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div
+                      style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', cursor: 'pointer' }}
+                      onClick={() => openUserProfile(user.id)}
+                    >
+                      {renderAvatar(user, 32)}
+                      <div>
+                        <div style={{ fontWeight: 700 }}>{user.full_name}</div>
+                        <div style={{ fontSize: '0.85rem', color: '#6c6b7a' }}>
+                          BF {new Date(user.due_date).toLocaleDateString('sv-SE')}
+                        </div>
+                      </div>
+                    </div>
+                    {user.is_new_pregnancy && <span className="chip">Ny BF</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="section card">
               <h3 style={{ marginBottom: '0.75rem' }}>Mina inbjudningar</h3>
               <div style={{ color: '#6c6b7a', marginBottom: '0.75rem' }}>
-                Du får fler inbjudningar genom att vara aktiv (posta, rösta, skapa grupper).
+                Du får fler inbjudningar genom att vara aktiv. Var 10:e poäng ger en extra kod.
               </div>
               <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
                 <span className="chip">Tillgängliga: {invitesAvailable}</span>
@@ -2313,12 +2691,40 @@ export default function KnottzApp() {
                       <p style={{ marginTop: '0.5rem' }}>{item.description}</p>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', minWidth: '140px' }}>
-                      <button className="btn btn-soft" onClick={() => toggleMustHaveVote(item.id, 'up')}>⬆️ {item.upvotes}</button>
-                      <button className="btn btn-soft" onClick={() => toggleMustHaveVote(item.id, 'verified')}>✅ {item.verified_count} har den</button>
+                      <button className="btn btn-soft" onClick={() => toggleMustHaveVote(item.id, 'up')}>Rösta {item.upvotes}</button>
+                      <button className="btn btn-soft" onClick={() => toggleMustHaveVote(item.id, 'verified')}>{item.verified_count} har den</button>
                     </div>
                   </div>
                 </div>
               ))}
+            </div>
+            <div className="section card">
+              <h3 style={{ marginBottom: '0.75rem' }}>Föreslå produkt</h3>
+              <div className="stack">
+                <input className="input" placeholder="Produktnamn" id="mh-title" />
+                <input className="input" placeholder="Länk till produkt (valfritt)" id="mh-link" />
+                <input className="input" placeholder="Kategori" id="mh-category" />
+                <textarea className="textarea" placeholder="Kort beskrivning" id="mh-desc" />
+                <button
+                  className="btn btn-primary"
+                  onClick={() => {
+                    const title = document.getElementById('mh-title')?.value || '';
+                    if (!title.trim()) return;
+                    const link = document.getElementById('mh-link')?.value || '';
+                    const category = document.getElementById('mh-category')?.value || '';
+                    const desc = document.getElementById('mh-desc')?.value || '';
+                    const next = [{ id: Date.now().toString(), title, link, category, desc }, ...mustHaveRequests];
+                    setMustHaveRequests(next);
+                  }}
+                >
+                  Skicka för granskning
+                </button>
+                {mustHaveRequests.length > 0 && (
+                  <div style={{ color: '#6c6b7a', fontSize: '0.85rem' }}>
+                    Senaste förslag: {mustHaveRequests[0].title}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -2343,8 +2749,8 @@ export default function KnottzApp() {
                   <div style={{ fontSize: '0.85rem', color: '#6c6b7a' }}>{tip.category}</div>
                   <p style={{ marginTop: '0.5rem' }}>{tip.content}</p>
                   <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.75rem' }}>
-                    <button className="btn btn-soft" onClick={() => toggleTipVote(tip.id, 'up')}>⬆️ {tip.upvotes}</button>
-                    <button className="btn btn-soft" onClick={() => toggleTipVote(tip.id, 'helpful')}>{tip.helpful_count}</button>
+                    <button className="btn btn-soft" onClick={() => toggleTipVote(tip.id, 'up')}>Rösta {tip.upvotes}</button>
+                    <button className="btn btn-soft" onClick={() => toggleTipVote(tip.id, 'helpful')}>Hjälpte {tip.helpful_count}</button>
                   </div>
                 </div>
               ))}
@@ -2372,6 +2778,19 @@ export default function KnottzApp() {
                     </div>
                   </div>
                   <p style={{ lineHeight: 1.6 }}>{post.content}</p>
+                  {post.media && post.media.length > 0 && (
+                    <div className="grid-3" style={{ marginTop: '1rem' }}>
+                      {post.media.map((item, idx) => (
+                        <div key={idx} className="card" style={{ padding: '0.5rem' }}>
+                          {item.type && item.type.startsWith('video') ? (
+                            <video src={item.url} controls style={{ width: '100%', borderRadius: 12 }} />
+                          ) : (
+                            <img src={item.url} alt={item.name || `media-${idx}`} style={{ width: '100%', borderRadius: 12 }} />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
                     <button className="btn btn-soft" onClick={() => toggleLike(post.id)}>{post.likes_count}</button>
                     <button className="btn btn-soft" onClick={() => setSelectedPost(post.id)}>{post.comments_count}</button>
@@ -2434,6 +2853,25 @@ export default function KnottzApp() {
         )}
 
       </div>
+
+      {showTour && (
+        <div className="modal-overlay" onClick={() => setShowTour(false)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h2 style={{ margin: 0 }}>Så funkar Knottz</h2>
+              <button className="btn btn-ghost" onClick={() => setShowTour(false)}>Stäng</button>
+            </div>
+            <div className="grid-2" style={{ marginTop: '1rem' }}>
+              {MOCK_SCREENSHOTS.map((shot) => (
+                <div key={shot.id} className="card" style={{ boxShadow: 'none', border: '1px solid var(--border)' }}>
+                  <img src={shot.src} alt={shot.title} style={{ width: '100%', borderRadius: 12 }} />
+                  <div style={{ marginTop: '0.6rem', fontWeight: 700 }}>{shot.title}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
