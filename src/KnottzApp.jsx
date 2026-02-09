@@ -427,7 +427,7 @@ const MOCK_COMMENTS = {
 };
 
 export default function KnottzApp() {
-  const INVITE_REQUIRED = true; // Invite-only for signup
+  const INVITE_REQUIRED = false; // Invite-only for signup (temporarily off)
   const [currentUser, setCurrentUser] = useState(MOCK_USERS[0]); // Inloggad som Anna
   const [view, setView] = useState('auth'); // auth, guest, feed, groups, profile, musthaves, tips, post, user
   const [previousView, setPreviousView] = useState('feed');
@@ -729,7 +729,8 @@ export default function KnottzApp() {
     const household = {
       name: householdName || `Hushåll ${parentOne || 'Ny'}`,
       account_type: accountType,
-      created_by: userId,
+      parent1_name: parentOne || null,
+      parent2_name: parentTwo || null,
     };
 
     const { data: householdRow, error: householdErr } = await supabase
@@ -751,13 +752,13 @@ export default function KnottzApp() {
 
     const profile = {
       id: userId,
+      user_id: userId,
       household_id: householdRow.id,
-      parent_one: parentOne,
-      parent_two: parentTwo,
-      due_date: expectedDueDate || null,
+      email: authEmail,
+      display_name: parentOne || householdName || authEmail,
       bio: '',
       avatar_url: '',
-      verified_by_inviter: Boolean(inviteRow?.created_by),
+      due_date: expectedDueDate || null,
       inviter_id: inviteRow?.created_by || null,
       is_admin: adminEmails.includes(authEmail),
     };
@@ -765,11 +766,11 @@ export default function KnottzApp() {
     if (profileErr) return setAuthError('Kunde inte spara profil');
 
     const childrenRows = existingChildren
-      .filter((c) => c.name || c.birthDate)
+      .filter((c) => c.birthDate)
       .map((c) => ({
         household_id: householdRow.id,
         name: c.name || '',
-        birth_date: c.birthDate || null,
+        birth_date: c.birthDate,
       }));
     if (childrenRows.length > 0) {
       await supabase.from('children').insert(childrenRows);
