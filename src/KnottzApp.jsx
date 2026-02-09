@@ -202,6 +202,27 @@ const MOCK_TIPS = [
   },
 ];
 
+// Mock Blog articles (guest access)
+const MOCK_BLOGS = [
+  {
+    id: 'b1',
+    title: 'Första veckorna: vad är normalt?',
+    excerpt: 'En kort guide om vanliga känslor, sömn och rutiner de första veckorna.',
+    created_at: '2025-02-02T08:00:00',
+  },
+  {
+    id: 'b2',
+    title: 'Checklista inför BB',
+    excerpt: 'En praktisk checklista som hjälper er att packa smart och lugnt.',
+    created_at: '2025-01-28T10:30:00',
+  },
+  {
+    id: 'b3',
+    title: 'Så pratar ni om förväntningar som par',
+    excerpt: 'Kommunikation, roller och planering inför den nya vardagen.',
+    created_at: '2025-01-20T14:15:00',
+  },
+];
 // Mock Giveaways (Skänk bort)
 const MOCK_GIVEAWAYS = [
   {
@@ -341,7 +362,7 @@ const MOCK_POSTS = [
   {
     id: '2',
     user_id: '1',
-    content: 'Första sparken idag! 😭❤️ Kan inte beskriva känslan. Det blev så verkligt helt plötsligt.',
+    content: 'Första sparken idag! Kan inte beskriva känslan. Det blev så verkligt helt plötsligt.',
     likes_count: 28,
     comments_count: 8,
     created_at: '2025-02-05T09:15:00',
@@ -379,7 +400,7 @@ const MOCK_CONVERSATIONS = [
 const MOCK_MESSAGES = {
   'conv1': [
     { id: 'm1', sender_id: '3', content: 'Hej! Såg att du också väntar barn i augusti?', created_at: '2025-02-05T10:00:00' },
-    { id: 'm2', sender_id: '1', content: 'Ja! Så spännande! ❤️', created_at: '2025-02-05T10:15:00' },
+    { id: 'm2', sender_id: '1', content: 'Ja! Så spännande!', created_at: '2025-02-05T10:15:00' },
     { id: 'm3', sender_id: '3', content: 'Vilken barnvagn tittar du på?', created_at: '2025-02-05T10:20:00' },
     { id: 'm4', sender_id: '1', content: 'Vi tänkte kolla på Emmaljunga. Du då?', created_at: '2025-02-05T10:45:00' },
     { id: 'm5', sender_id: '3', content: 'Tack för tipset om barnvagnen!', created_at: '2025-02-05T11:00:00' },
@@ -394,11 +415,11 @@ const MOCK_MESSAGES = {
 const MOCK_COMMENTS = {
   '1': [
     { id: 'c1', user_id: '1', content: 'Haha samma här! Pickles och glass 🍦', created_at: '2025-02-05T11:00:00' },
-    { id: 'c2', user_id: '4', content: 'För mig är det chipsen som gäller 😄', created_at: '2025-02-05T11:30:00' },
+    { id: 'c2', user_id: '4', content: 'För mig är det chipsen som gäller', created_at: '2025-02-05T11:30:00' },
   ],
   '2': [
-    { id: 'c3', user_id: '3', content: 'Grattis! Så magiskt! ✨', created_at: '2025-02-05T09:30:00' },
-    { id: 'c4', user_id: '2', content: 'Underbart! Minns den känslan ❤️', created_at: '2025-02-05T10:00:00' },
+    { id: 'c3', user_id: '3', content: 'Grattis! Så magiskt!', created_at: '2025-02-05T09:30:00' },
+    { id: 'c4', user_id: '2', content: 'Underbart! Minns den känslan', created_at: '2025-02-05T10:00:00' },
   ],
   '3': [
     { id: 'c5', user_id: '3', content: 'Vi har Bugaboo Donkey - jättebra!', created_at: '2025-02-04T19:00:00' },
@@ -406,7 +427,7 @@ const MOCK_COMMENTS = {
 };
 
 export default function KnottzApp() {
-  const INVITE_REQUIRED = true; // Feature flag (turn on when ready)
+  const INVITE_REQUIRED = true; // Invite-only for signup
   const [currentUser, setCurrentUser] = useState(MOCK_USERS[0]); // Inloggad som Anna
   const [view, setView] = useState('auth'); // auth, guest, feed, groups, profile, musthaves, tips, post, user
   const [previousView, setPreviousView] = useState('feed');
@@ -424,6 +445,9 @@ export default function KnottzApp() {
   const [parentTwo, setParentTwo] = useState('');
   const [expectedDueDate, setExpectedDueDate] = useState('');
   const [existingChildren, setExistingChildren] = useState([{ name: '', birthDate: '' }]);
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authError, setAuthError] = useState('');
   const [posts, setPosts] = useState(MOCK_POSTS);
   const [users, setUsers] = useState(MOCK_USERS);
   const [following, setFollowing] = useState(['2', '3']); // Anna följer Erik och Sara
@@ -475,6 +499,25 @@ export default function KnottzApp() {
     if (stored) {
       setInviteStatus({ hasInvite: true, code: stored });
     }
+  }, []);
+
+  useEffect(() => {
+    if (!supabase) return;
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session) {
+        setIsAuthenticated(true);
+        setView('feed');
+      }
+    });
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) {
+        setIsAuthenticated(true);
+        setView('feed');
+      } else {
+        setIsAuthenticated(false);
+      }
+    });
+    return () => authListener.subscription.unsubscribe();
   }, []);
 
   useEffect(() => {
@@ -658,11 +701,90 @@ export default function KnottzApp() {
     setView('user');
   };
 
-  const generateInviteCode = () => {
+  const signIn = async () => {
+    setAuthError('');
+    if (!supabase) return setAuthError('Supabase saknas');
+    const { error } = await supabase.auth.signInWithPassword({
+      email: authEmail,
+      password: authPassword,
+    });
+    if (error) setAuthError('Fel e-post eller lösenord');
+  };
+
+  const signUp = async () => {
+    setAuthError('');
+    if (!supabase) return setAuthError('Supabase saknas');
+    if (INVITE_REQUIRED && !canUseInvite(inviteInput)) {
+      return setAuthError('Ogiltig inbjudningskod');
+    }
+
+    const { data, error } = await supabase.auth.signUp({
+      email: authEmail,
+      password: authPassword,
+    });
+    if (error || !data.user) return setAuthError('Kunde inte skapa konto');
+
+    const userId = data.user.id;
+    const household = {
+      name: householdName || `Hushåll ${parentOne || 'Ny'}`,
+      account_type: accountType,
+      created_by: userId,
+    };
+
+    const { data: householdRow, error: householdErr } = await supabase
+      .from('households')
+      .insert(household)
+      .select('id')
+      .single();
+    if (householdErr) return setAuthError('Kunde inte spara hushåll');
+
+    const profile = {
+      id: userId,
+      household_id: householdRow.id,
+      parent_one: parentOne,
+      parent_two: parentTwo,
+      due_date: expectedDueDate || null,
+      bio: '',
+      avatar_url: '',
+      verified_by_inviter: inviteVerified,
+    };
+    const { error: profileErr } = await supabase.from('profiles').insert(profile);
+    if (profileErr) return setAuthError('Kunde inte spara profil');
+
+    const childrenRows = existingChildren
+      .filter((c) => c.name || c.birthDate)
+      .map((c) => ({
+        household_id: householdRow.id,
+        name: c.name || '',
+        birth_date: c.birthDate || null,
+      }));
+    if (childrenRows.length > 0) {
+      await supabase.from('children').insert(childrenRows);
+    }
+
+    if (INVITE_REQUIRED) {
+      await supabase
+        .from('invites')
+        .update({ redeemed_at: new Date().toISOString(), redeemed_by: userId })
+        .eq('code', inviteInput);
+    }
+
+    setIsAuthenticated(true);
+    setView('feed');
+  };
+
+  const generateInviteCode = async () => {
     const code = `KNOTTZ-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
     const updated = [...inviteCodes, code].slice(0, invitesAvailable);
     setInviteCodes(updated);
     localStorage.setItem('knottz_invite_codes', JSON.stringify(updated));
+    if (supabase) {
+      const { data: sessionData } = await supabase.auth.getUser();
+      await supabase.from('invites').insert({
+        code,
+        created_by: sessionData?.user?.id || null,
+      });
+    }
   };
 
   const canUseInvite = (code) => {
@@ -793,22 +915,22 @@ export default function KnottzApp() {
         @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=DM+Serif+Display:ital@0;1&display=swap');
 
         :root {
-          --bg: #f6f4ff;
-          --bg-strong: #e7e1ff;
+          --bg: #ffffff;
+          --bg-strong: #f5f5f5;
           --card: #ffffff;
-          --ink: #1f1d2b;
-          --muted: #6c6b7a;
-          --accent: #7b6df0;
-          --accent-strong: #6658d8;
-          --accent-soft: #f0edff;
-          --accent-gold: #f4d36b;
+          --ink: #111111;
+          --muted: #666666;
+          --accent: #111111;
+          --accent-strong: #000000;
+          --accent-soft: #f3f3f3;
+          --accent-gold: #d7b56d;
           --accent-mint: #8fc7b3;
-          --border: #e3ddff;
-          --shadow: 0 10px 28px rgba(48, 35, 110, 0.12);
-          --shadow-soft: 0 4px 14px rgba(48, 35, 110, 0.08);
-          --radius-lg: 20px;
-          --radius-md: 14px;
-          --radius-sm: 10px;
+          --border: #e5e5e5;
+          --shadow: 0 10px 28px rgba(0, 0, 0, 0.06);
+          --shadow-soft: 0 4px 14px rgba(0, 0, 0, 0.05);
+          --radius-lg: 18px;
+          --radius-md: 12px;
+          --radius-sm: 8px;
         }
 
         * { box-sizing: border-box; }
@@ -816,8 +938,7 @@ export default function KnottzApp() {
 
         .app {
           font-family: 'Manrope', -apple-system, BlinkMacSystemFont, sans-serif;
-          background: radial-gradient(1200px 600px at 10% -10%, var(--bg-strong), transparent),
-                      linear-gradient(140deg, var(--bg) 0%, #ffffff 100%);
+          background: var(--bg);
           min-height: 100vh;
           color: var(--ink);
         }
@@ -903,7 +1024,7 @@ export default function KnottzApp() {
           position: relative;
         }
         .nav-btn[data-active="true"] {
-          color: var(--accent);
+          color: var(--ink);
           background: var(--accent-soft);
           border-color: var(--border);
         }
@@ -912,7 +1033,7 @@ export default function KnottzApp() {
           position: absolute;
           top: -0.2rem;
           right: -0.1rem;
-          background: var(--accent);
+          background: var(--ink);
           color: white;
           border-radius: 999px;
           padding: 0.1rem 0.45rem;
@@ -920,7 +1041,7 @@ export default function KnottzApp() {
           font-weight: 700;
         }
         .badge-inline {
-          background: var(--accent);
+          background: var(--ink);
           color: white;
           border-radius: 999px;
           padding: 0.1rem 0.45rem;
@@ -1048,7 +1169,7 @@ export default function KnottzApp() {
         .btn:hover { transform: translateY(-1px); }
         .btn:disabled { cursor: not-allowed; opacity: 0.6; transform: none; }
         .btn-primary { background: var(--accent); color: white; }
-        .btn-outline { background: white; color: var(--accent); border: 2px solid var(--accent); }
+        .btn-outline { background: white; color: var(--ink); border: 2px solid var(--border); }
         .btn-soft { background: var(--accent-soft); color: var(--accent); border: 1px solid var(--border); }
         .btn-ghost { background: #f2f2f2; color: #444; }
 
@@ -1144,23 +1265,23 @@ export default function KnottzApp() {
       {isAuthenticated && (
         <nav className="app-nav">
           <div className="app-nav-inner">
-            {[
-              { id: 'feed', label: 'Flöde', icon: '📱' },
-              { id: 'groups', label: 'Grupper', icon: '👥' },
-              { id: 'profile', label: 'Profil', icon: '👤', badge: conversations.reduce((sum, c) => sum + c.unread, 0) },
-            ].map(({ id, label, icon, badge }) => (
-              <button
-                key={id}
-                onClick={() => setView(id)}
-                className="nav-btn"
-                data-active={view === id}
-              >
-                {icon} {label}
-                {badge > 0 && (
-                  <span className="badge">{badge}</span>
-                )}
-              </button>
-            ))}
+          {[
+            { id: 'feed', label: 'Flöde', icon: '' },
+            { id: 'groups', label: 'Grupper', icon: '' },
+            { id: 'profile', label: 'Profil', icon: '', badge: conversations.reduce((sum, c) => sum + c.unread, 0) },
+          ].map(({ id, label, icon, badge }) => (
+            <button
+              key={id}
+              onClick={() => setView(id)}
+              className="nav-btn"
+              data-active={view === id}
+            >
+              {label}
+              {badge > 0 && (
+                <span className="badge">{badge}</span>
+              )}
+            </button>
+          ))}
           </div>
         </nav>
       )}
@@ -1220,8 +1341,8 @@ export default function KnottzApp() {
                     onChange={(e) => setInviteInput(e.target.value)}
                   />
                 )}
-                <input className="input" placeholder="E‑post" />
-                <input className="input" placeholder="Lösenord" type="password" />
+                <input className="input" placeholder="E‑post" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} />
+                <input className="input" placeholder="Lösenord" type="password" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} />
                 {authMode === 'signup' && (
                   <div className="soft-panel">
                     <div style={{ fontWeight: 700, marginBottom: '0.5rem' }}>Kontotyp</div>
@@ -1304,19 +1425,12 @@ export default function KnottzApp() {
                     Jag har blivit verifierad av den som bjöd in mig
                   </label>
                 )}
-                <button
-                  className="btn btn-primary"
-                  onClick={() => {
-                    if (INVITE_REQUIRED && authMode === 'signup' && !canUseInvite(inviteInput)) return;
-                    setIsAuthenticated(true);
-                    if (authMode === 'signup' && canUseInvite(inviteInput)) {
-                      setInviteVerified(true);
-                    }
-                    setView('feed');
-                  }}
-                >
+                <button className="btn btn-primary" onClick={() => (authMode === 'login' ? signIn() : signUp())}>
                   {authMode === 'login' ? 'Logga in' : 'Skapa konto'}
                 </button>
+                {authError && (
+                  <div style={{ color: '#b00020', fontSize: '0.9rem' }}>{authError}</div>
+                )}
                 <button
                   className="btn btn-soft"
                   onClick={() => setAuthMode(authMode === 'login' ? 'signup' : 'login')}
@@ -1408,7 +1522,7 @@ export default function KnottzApp() {
                         <div style={{ fontWeight: 700 }}>{item.title}</div>
                         <div style={{ fontSize: '0.85rem', color: '#6c6b7a' }}>{item.category} · {item.price_range}</div>
                       </div>
-                      <span className="chip">🔥 {item.upvotes}</span>
+                      <span className="chip">{item.upvotes}</span>
                     </div>
                   ))}
                 </div>
@@ -1432,7 +1546,7 @@ export default function KnottzApp() {
                         <div style={{ fontWeight: 700 }}>{tip.title}</div>
                         <div style={{ fontSize: '0.85rem', color: '#6c6b7a' }}>{tip.category}</div>
                       </div>
-                      <span className="chip">✨ {tip.helpful_count}</span>
+                      <span className="chip">{tip.helpful_count}</span>
                     </div>
                   ))}
                 </div>
@@ -1635,7 +1749,7 @@ export default function KnottzApp() {
                       {renderAvatar(user, 32)}
                       <div>
                         <div style={{ fontWeight: 700 }}>
-                          {user.full_name} {user.is_new_pregnancy ? '🎈' : ''}
+                          {user.full_name} {user.is_new_pregnancy ? 'Nytt' : ''}
                         </div>
                         <div style={{ fontSize: '0.85rem', color: '#6c6b7a' }}>
                           BF {new Date(user.due_date).toLocaleDateString('sv-SE')}
@@ -1663,6 +1777,21 @@ export default function KnottzApp() {
               </button>
             </div>
 
+            <div className="section card fade-in">
+              <h3 style={{ marginBottom: '0.75rem' }}>Artiklar</h3>
+              <div className="stack">
+                {MOCK_BLOGS.map((blog) => (
+                  <div key={blog.id} className="card" style={{ boxShadow: 'none', border: '1px solid var(--border)' }}>
+                    <div style={{ fontWeight: 700 }}>{blog.title}</div>
+                    <div style={{ color: '#666', fontSize: '0.85rem', margin: '0.4rem 0' }}>
+                      {new Date(blog.created_at).toLocaleDateString('sv-SE')}
+                    </div>
+                    <div style={{ color: '#333' }}>{blog.excerpt}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             <div className="section grid-2 fade-in">
               <div className="card">
                 <h3 style={{ marginBottom: '0.75rem' }}>Toppröstade Must Haves</h3>
@@ -1673,7 +1802,7 @@ export default function KnottzApp() {
                         <div style={{ fontWeight: 700 }}>{item.title}</div>
                         <div style={{ fontSize: '0.85rem', color: '#6c6b7a' }}>{item.category}</div>
                       </div>
-                      <span className="chip">🔥 {item.upvotes}</span>
+                      <span className="chip">{item.upvotes}</span>
                     </div>
                   ))}
                 </div>
@@ -1688,7 +1817,7 @@ export default function KnottzApp() {
                         <div style={{ fontWeight: 700 }}>{tip.title}</div>
                         <div style={{ fontSize: '0.85rem', color: '#6c6b7a' }}>{tip.category}</div>
                       </div>
-                      <span className="chip">✨ {tip.helpful_count}</span>
+                      <span className="chip">{tip.helpful_count}</span>
                     </div>
                   ))}
                 </div>
@@ -2008,7 +2137,7 @@ export default function KnottzApp() {
               <div className="section">
                 <div className="messages-layout" style={{ gridTemplateColumns: activeConversation ? '320px 1fr' : '1fr' }}>
                   <div className="card" style={{ overflowY: 'auto' }}>
-                    <h3 style={{ fontSize: '1.3rem', marginBottom: '1rem' }}>💬 Meddelanden</h3>
+                    <h3 style={{ fontSize: '1.3rem', marginBottom: '1rem' }}>Meddelanden</h3>
                     {conversations.length === 0 ? (
                       <div style={{ textAlign: 'center', padding: '2rem', color: '#6c6b7a' }}>
                         Inga konversationer än.
@@ -2205,7 +2334,7 @@ export default function KnottzApp() {
                   <p style={{ marginTop: '0.5rem' }}>{tip.content}</p>
                   <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.75rem' }}>
                     <button className="btn btn-soft" onClick={() => toggleTipVote(tip.id, 'up')}>⬆️ {tip.upvotes}</button>
-                    <button className="btn btn-soft" onClick={() => toggleTipVote(tip.id, 'helpful')}>✨ {tip.helpful_count}</button>
+                    <button className="btn btn-soft" onClick={() => toggleTipVote(tip.id, 'helpful')}>{tip.helpful_count}</button>
                   </div>
                 </div>
               ))}
@@ -2234,8 +2363,8 @@ export default function KnottzApp() {
                   </div>
                   <p style={{ lineHeight: 1.6 }}>{post.content}</p>
                   <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
-                    <button className="btn btn-soft" onClick={() => toggleLike(post.id)}>❤️ {post.likes_count}</button>
-                    <button className="btn btn-soft" onClick={() => setSelectedPost(post.id)}>💬 {post.comments_count}</button>
+                    <button className="btn btn-soft" onClick={() => toggleLike(post.id)}>{post.likes_count}</button>
+                    <button className="btn btn-soft" onClick={() => setSelectedPost(post.id)}>{post.comments_count}</button>
                   </div>
                 </div>
               );
