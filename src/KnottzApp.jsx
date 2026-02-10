@@ -231,7 +231,7 @@ const MOCK_BLOGS = [
 const MOCK_SCREENSHOTS = [
   { id: 's1', title: 'Flödet', src: '/mock-feed.svg' },
   { id: 's2', title: 'Vänner som väntar', src: '/mock-friends.svg' },
-  { id: 's3', title: 'Övrigt · Grupper', src: '/mock-groups.svg' },
+  { id: 's3', title: 'AlltIAllo · Grupper', src: '/mock-groups.svg' },
   { id: 's4', title: 'Din profil', src: '/mock-profile.svg' },
 ];
 
@@ -494,6 +494,7 @@ export default function KnottzApp() {
     location: '',
     household_name: '',
     personal_number: '',
+    has_children: null,
     is_new_pregnancy: false,
   });
   const [view, setView] = useState('auth'); // auth, guest, feed, groups, profile, musthaves, tips, post, user
@@ -523,10 +524,21 @@ export default function KnottzApp() {
   const [posts, setPosts] = useState(MOCK_POSTS);
   const [users, setUsers] = useState(MOCK_USERS);
   const [following, setFollowing] = useState(['2', '3']); // Anna följer Erik och Sara
+  const [followers, setFollowers] = useState([]);
+  const [householdId, setHouseholdId] = useState(null);
+  const [childrenList, setChildrenList] = useState([]);
+  const [newChildName, setNewChildName] = useState('');
+  const [newChildBirthDate, setNewChildBirthDate] = useState('');
   const [newPostContent, setNewPostContent] = useState('');
   const [newPostVisibility, setNewPostVisibility] = useState('public');
   const [newPostMedia, setNewPostMedia] = useState([]);
   const [showNewPost, setShowNewPost] = useState(false);
+  const [quickGroupSearch, setQuickGroupSearch] = useState('');
+  const [quickFriendSearch, setQuickFriendSearch] = useState('');
+  const [joinedGroupFlag, setJoinedGroupFlag] = useState(false);
+  const [votedFlag, setVotedFlag] = useState(false);
+  const [postedFlag, setPostedFlag] = useState(false);
+  const [inviteSentFlag, setInviteSentFlag] = useState(false);
   const [selectedPost, setSelectedPost] = useState(null);
   const [comments, setComments] = useState(MOCK_COMMENTS);
   const [newComment, setNewComment] = useState('');
@@ -588,6 +600,17 @@ export default function KnottzApp() {
   }, []);
 
   useEffect(() => {
+    const joined = localStorage.getItem('knottz_joined_group') === '1';
+    const voted = localStorage.getItem('knottz_voted') === '1';
+    const posted = localStorage.getItem('knottz_posted') === '1';
+    const invited = localStorage.getItem('knottz_invite_sent') === '1';
+    setJoinedGroupFlag(joined);
+    setVotedFlag(voted);
+    setPostedFlag(posted);
+    setInviteSentFlag(invited);
+  }, []);
+
+  useEffect(() => {
     localStorage.setItem('knottz_privacy', profilePrivacy);
   }, [profilePrivacy]);
 
@@ -611,6 +634,8 @@ export default function KnottzApp() {
       household_name: profile?.household_name || '',
       personal_number: profile?.personal_number || '',
       is_private: profile?.is_private || false,
+      has_children: profile?.has_children ?? null,
+      household_id: profile?.household_id || null,
       is_new_pregnancy: true,
     };
   };
@@ -619,7 +644,7 @@ export default function KnottzApp() {
     if (!supabase) return;
     const { data } = await supabase
       .from('profiles')
-      .select('id,user_id,email,display_name,bio,avatar_url,location,expected_due_date,household_name,is_private,personal_number');
+      .select('id,user_id,email,display_name,bio,avatar_url,location,expected_due_date,household_name,is_private,personal_number,has_children,household_id');
     if (data && data.length) {
       setUsers(data.map(mapProfileToUser));
     }
@@ -636,17 +661,44 @@ export default function KnottzApp() {
     }
   };
 
+  const loadFollowers = async (userId) => {
+    if (!supabase || !userId) return;
+    const { data } = await supabase
+      .from('follows')
+      .select('follower_id')
+      .eq('followee_id', userId);
+    if (data) {
+      setFollowers(data.map(row => row.follower_id));
+    }
+  };
+
+  const loadChildren = async (nextHouseholdId) => {
+    if (!supabase || !nextHouseholdId) return;
+    const { data } = await supabase
+      .from('children')
+      .select('id,name,birth_date')
+      .eq('household_id', nextHouseholdId);
+    if (data) {
+      setChildrenList(data.map(row => ({
+        id: row.id,
+        name: row.name || '',
+        birthDate: row.birth_date || '',
+      })));
+    }
+  };
+
   const loadCurrentProfile = async (userId) => {
     if (!supabase || !userId) return;
     const { data } = await supabase
       .from('profiles')
-      .select('id,user_id,email,display_name,bio,avatar_url,location,expected_due_date,household_name,is_private,personal_number')
+      .select('id,user_id,email,display_name,bio,avatar_url,location,expected_due_date,household_name,is_private,personal_number,has_children,household_id')
       .eq('user_id', userId)
       .maybeSingle();
     if (data) {
       const mapped = mapProfileToUser(data);
       setCurrentUser(mapped);
       setProfilePrivacy(data.is_private ? 'private' : 'public');
+      setHouseholdId(data.household_id || null);
       return mapped;
     }
   };
@@ -703,6 +755,7 @@ export default function KnottzApp() {
       household_name: pending.householdName || '',
       is_private: pending.profilePrivacy === 'private',
       personal_number: '',
+      has_children: pending.hasChildren ?? false,
       inviter_id: inviteRow?.created_by || null,
       is_admin: adminEmails.includes(pending.authEmail || user.email),
     };
@@ -749,8 +802,15 @@ export default function KnottzApp() {
         const profile = await loadCurrentProfile(session.user.id);
         await loadProfiles();
         await loadFollowing(session.user.id);
+        await loadFollowers(session.user.id);
         const complete = profile ? Boolean(
-          profile.full_name && profile.personal_number && profile.bio && profile.avatar_url && profile.due_date
+          profile.full_name &&
+          profile.personal_number &&
+          profile.bio &&
+          profile.avatar_url &&
+          profile.location &&
+          profile.has_children !== null &&
+          (profile.due_date || profile.expected_due_date)
         ) : false;
         setView(complete ? 'feed' : 'profile');
       }
@@ -764,8 +824,15 @@ export default function KnottzApp() {
         const profile = await loadCurrentProfile(session.user.id);
         await loadProfiles();
         await loadFollowing(session.user.id);
+        await loadFollowers(session.user.id);
         const complete = profile ? Boolean(
-          profile.full_name && profile.personal_number && profile.bio && profile.avatar_url && profile.due_date
+          profile.full_name &&
+          profile.personal_number &&
+          profile.bio &&
+          profile.avatar_url &&
+          profile.location &&
+          profile.has_children !== null &&
+          (profile.due_date || profile.expected_due_date)
         ) : false;
         setView(complete ? 'feed' : 'profile');
       } else {
@@ -777,6 +844,11 @@ export default function KnottzApp() {
   }, []);
 
   useEffect(() => {
+    if (!householdId) return;
+    loadChildren(householdId);
+  }, [householdId]);
+
+  useEffect(() => {
     if (!isAuthenticated) return;
     const onboarded = localStorage.getItem('knottz_onboarded');
     if (!onboarded) {
@@ -784,6 +856,26 @@ export default function KnottzApp() {
       setShowQuickStart(true);
     }
   }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated || onboardingProgress < 100) return;
+    const bonusGranted = localStorage.getItem('knottz_onboarding_bonus') === '1';
+    if (bonusGranted) return;
+    const grantBonus = async () => {
+      if (!supabase) return;
+      const { data: sessionData } = await supabase.auth.getUser();
+      const code = `KNOTTZ-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+      await supabase.from('invites').insert({
+        code,
+        created_by: sessionData?.user?.id || null,
+      });
+      const updated = isAdminUser ? [...inviteCodes, code] : [...inviteCodes, code].slice(0, invitesAvailable + 1);
+      setInviteCodes(updated);
+      localStorage.setItem('knottz_invite_codes', JSON.stringify(updated));
+      localStorage.setItem('knottz_onboarding_bonus', '1');
+    };
+    grantBonus();
+  }, [isAuthenticated, onboardingProgress, inviteCodes.length, invitesAvailable, isAdminUser]);
 
   useEffect(() => {
     setMenuOpen(false);
@@ -886,6 +978,8 @@ export default function KnottzApp() {
     setNewPostContent('');
     setNewPostMedia([]);
     setShowNewPost(false);
+    setPostedFlag(true);
+    localStorage.setItem('knottz_posted', '1');
   };
 
   // Följ/avfölja användare
@@ -983,16 +1077,36 @@ export default function KnottzApp() {
   };
 
   const isProfileComplete = () => {
+    const hasChildInfo = Boolean(currentUser.due_date || childrenList.length);
+    const answeredChildren = currentUser.has_children !== null;
     return Boolean(
       currentUser.full_name &&
+      currentUser.location &&
       currentUser.personal_number &&
       currentUser.bio &&
       currentUser.avatar_url &&
-      currentUser.due_date
+      answeredChildren &&
+      hasChildInfo
     );
   };
 
   const canInteract = isAuthenticated && isProfileComplete();
+
+  const onboardingSteps = [
+    { id: 'name', label: 'Fyll i namn', done: Boolean(currentUser.full_name) },
+    { id: 'location', label: 'Lägg till ort', done: Boolean(currentUser.location) },
+    { id: 'personal', label: 'Ange personnummer', done: Boolean(currentUser.personal_number) },
+    { id: 'avatar', label: 'Ladda upp profilbild', done: Boolean(currentUser.avatar_url) },
+    { id: 'children', label: 'Barninfo (BF eller födelsedatum)', done: Boolean(currentUser.due_date || childrenList.length) && currentUser.has_children !== null },
+    { id: 'group', label: 'Gå med i en grupp', done: groups.some(g => g.is_member) },
+    { id: 'vote', label: 'Rösta på en must have', done: Object.keys(mustHaveVotes).length > 0 },
+    { id: 'post', label: 'Skapa ett inlägg', done: posts.some(p => p.user_id === currentUser.id) },
+    { id: 'invite', label: 'Bjud in en vän', done: inviteSentFlag },
+  ];
+
+  const onboardingCompleted = onboardingSteps.filter(step => step.done).length;
+  const onboardingTotal = onboardingSteps.length;
+  const onboardingProgress = Math.round((onboardingCompleted / onboardingTotal) * 100);
 
   const handleNewPostMedia = (e) => {
     const files = Array.from(e.target.files || []);
@@ -1017,6 +1131,17 @@ export default function KnottzApp() {
       setUsers(prev => prev.map(u => (u.id === currentUser.id ? { ...u, avatar_url: nextUrl } : u)));
     };
     reader.readAsDataURL(file);
+    if (supabase && authUserId) {
+      const tempReader = new FileReader();
+      tempReader.onload = async () => {
+        const nextUrl = tempReader.result;
+        await supabase
+          .from('profiles')
+          .update({ avatar_url: nextUrl || '' })
+          .eq('user_id', authUserId);
+      };
+      tempReader.readAsDataURL(file);
+    }
   };
 
   const openDetail = (nextView, id = null) => {
@@ -1034,6 +1159,31 @@ export default function KnottzApp() {
     setPreviousView(view);
     setDetailId(userId);
     setView('user');
+  };
+
+  const focusOnboardingStep = (stepId) => {
+    if (stepId === 'name' || stepId === 'location' || stepId === 'personal' || stepId === 'avatar' || stepId === 'children') {
+      setView('profile');
+      setEditingProfile(true);
+      return;
+    }
+    if (stepId === 'group') {
+      setView('groups');
+      return;
+    }
+    if (stepId === 'vote') {
+      setView('musthaves');
+      return;
+    }
+    if (stepId === 'post') {
+      setView('feed');
+      setShowNewPost(true);
+      return;
+    }
+    if (stepId === 'invite') {
+      setView('profile');
+      return;
+    }
   };
 
   const signIn = async () => {
@@ -1079,6 +1229,7 @@ export default function KnottzApp() {
       expectedDueDate,
       existingChildren,
       profilePrivacy,
+      hasChildren: Array.isArray(existingChildren) && existingChildren.some(c => c.birthDate),
       authEmail,
     };
     localStorage.setItem(pendingSignupKey, JSON.stringify(pendingPayload));
@@ -1109,11 +1260,17 @@ export default function KnottzApp() {
   // Gå med/lämna grupp
   const toggleGroupMembership = (groupId) => {
     if (!canInteract) return;
-    setGroups(groups.map(g => 
-      g.id === groupId 
-        ? { ...g, is_member: !g.is_member, members: g.is_member ? g.members - 1 : g.members + 1 }
-        : g
-    ));
+    setGroups(groups.map(g => {
+      if (g.id === groupId) {
+        const nextMember = !g.is_member;
+        if (nextMember) {
+          setJoinedGroupFlag(true);
+          localStorage.setItem('knottz_joined_group', '1');
+        }
+        return { ...g, is_member: nextMember, members: g.is_member ? g.members - 1 : g.members + 1 };
+      }
+      return g;
+    }));
   };
 
   // Skicka meddelande
@@ -1147,7 +1304,8 @@ export default function KnottzApp() {
     const existingConv = conversations.find(c => c.other_user_id === userId);
     if (existingConv) {
       setActiveConversation(existingConv.id);
-      setView('messages');
+      setView('profile');
+      setProfileTab('messages');
       return;
     }
     
@@ -1162,7 +1320,8 @@ export default function KnottzApp() {
     setConversations([newConv, ...conversations]);
     setMessages({ ...messages, [newConv.id]: [] });
     setActiveConversation(newConv.id);
-    setView('messages');
+    setView('profile');
+    setProfileTab('messages');
   };
 
   // Toggle upvote for must haves
@@ -1182,6 +1341,8 @@ export default function KnottzApp() {
       return item;
     }));
     setMustHaveVotes({ ...mustHaveVotes, [id]: voteType });
+    setVotedFlag(true);
+    localStorage.setItem('knottz_voted', '1');
   };
 
   // Toggle vote for tips
@@ -1199,6 +1360,8 @@ export default function KnottzApp() {
       return tip;
     }));
     setTipVotes({ ...tipVotes, [id]: voteType });
+    setVotedFlag(true);
+    localStorage.setItem('knottz_voted', '1');
   };
 
   // Claim giveaway
@@ -1613,9 +1776,6 @@ export default function KnottzApp() {
               aria-label="Öppna profil"
             >
               {renderAvatar(currentUser, 34)}
-              <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>
-                {currentUser.full_name || 'Din profil'}
-              </div>
             </button>
           ) : (
             <button className="btn btn-primary" onClick={() => setView('auth')}>
@@ -1632,7 +1792,6 @@ export default function KnottzApp() {
           {[
             { id: 'feed', label: 'Flöde', icon: '' },
             { id: 'groups', label: 'AlltIAllo', icon: '' },
-            { id: 'profile', label: 'Profil', icon: '', badge: conversations.reduce((sum, c) => sum + c.unread, 0) },
           ].map(({ id, label, icon, badge }) => (
             <button
               key={id}
@@ -2266,6 +2425,12 @@ export default function KnottzApp() {
             </div>
 
             <div className="section grid-3">
+              <button className="btn btn-soft" onClick={() => setView('musthaves')}>Must Haves</button>
+              <button className="btn btn-soft" onClick={() => setView('tips')}>Tips & Tricks</button>
+              <button className="btn btn-soft" onClick={() => setScbPanel(true)}>SCB‑statistik</button>
+            </div>
+
+            <div className="section grid-3">
               <div className="stat-card">
                 <div className="stat-value">{COMMUNITY_STATS.total_members}</div>
                 <div>Totala medlemmar</div>
@@ -2504,12 +2669,14 @@ export default function KnottzApp() {
               </div>
 
               <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                {currentUser.household_name && <span className="chip">🏡 {currentUser.household_name}</span>}
                 <span className="chip">📍 {currentUser.location || 'Lägg till ort'}</span>
                 <span className="chip">
                   📅 {currentUser.due_date ? new Date(currentUser.due_date).toLocaleDateString('sv-SE', { year: 'numeric', month: 'long', day: 'numeric' }) : 'Lägg till BF'}
                 </span>
                 <span className="chip">{posts.filter(p => p.user_id === currentUser.id).length} inlägg</span>
                 <span className="chip">{following.length} följer</span>
+                <span className="chip">{followers.length} följare</span>
                 {adminEmails.includes(authEmail) && <span className="chip">Admin</span>}
               </div>
             </div>
@@ -2523,6 +2690,12 @@ export default function KnottzApp() {
                     placeholder="Namn"
                     value={currentUser.full_name || ''}
                     onChange={(e) => setCurrentUser({ ...currentUser, full_name: e.target.value })}
+                  />
+                  <input
+                    className="input"
+                    placeholder="Familjenamn"
+                    value={currentUser.household_name || ''}
+                    onChange={(e) => setCurrentUser({ ...currentUser, household_name: e.target.value })}
                   />
                   <input
                     className="input"
@@ -2542,6 +2715,75 @@ export default function KnottzApp() {
                     value={currentUser.personal_number || ''}
                     onChange={(e) => setCurrentUser({ ...currentUser, personal_number: e.target.value })}
                   />
+                  <div>
+                    <div style={{ fontWeight: 600, marginBottom: '0.5rem' }}>Har ni barn redan?</div>
+                    <div className="subnav">
+                      <button
+                        className={`btn ${currentUser.has_children === true ? 'btn-primary' : 'btn-soft'}`}
+                        onClick={() => setCurrentUser({ ...currentUser, has_children: true })}
+                      >
+                        Ja
+                      </button>
+                      <button
+                        className={`btn ${currentUser.has_children === false ? 'btn-primary' : 'btn-soft'}`}
+                        onClick={() => setCurrentUser({ ...currentUser, has_children: false })}
+                      >
+                        Nej
+                      </button>
+                    </div>
+                  </div>
+                  {currentUser.has_children && (
+                    <div className="card" style={{ boxShadow: 'none', border: '1px solid var(--border)' }}>
+                      <div style={{ fontWeight: 700, marginBottom: '0.5rem' }}>Lägg till barn</div>
+                      <div style={{ display: 'grid', gap: '0.5rem', gridTemplateColumns: '1fr 1fr' }}>
+                        <input
+                          className="input"
+                          placeholder="Barnets namn"
+                          value={newChildName}
+                          onChange={(e) => setNewChildName(e.target.value)}
+                        />
+                        <input
+                          className="input"
+                          type="date"
+                          value={newChildBirthDate}
+                          onChange={(e) => setNewChildBirthDate(e.target.value)}
+                        />
+                      </div>
+                      <button
+                        className="btn btn-soft"
+                        style={{ marginTop: '0.75rem' }}
+                        onClick={async () => {
+                          if (!newChildBirthDate || !householdId || !supabase) return;
+                          const { data } = await supabase
+                            .from('children')
+                            .insert({
+                              household_id: householdId,
+                              name: newChildName || '',
+                              birth_date: newChildBirthDate,
+                            })
+                            .select('id,name,birth_date')
+                            .single();
+                          if (data) {
+                            setChildrenList(prev => [...prev, { id: data.id, name: data.name || '', birthDate: data.birth_date }]);
+                            setNewChildName('');
+                            setNewChildBirthDate('');
+                          }
+                        }}
+                      >
+                        Lägg till barn
+                      </button>
+                      {childrenList.length > 0 && (
+                        <div className="stack" style={{ marginTop: '0.75rem' }}>
+                          {childrenList.map(child => (
+                            <div key={child.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
+                              <span>{child.name || 'Barn'}</span>
+                              <span>{child.birthDate}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <label style={{ fontWeight: 600 }}>Beräknat datum för barnet</label>
                   <input
                     className="input"
@@ -2575,7 +2817,9 @@ export default function KnottzApp() {
                           bio: currentUser.bio || '',
                           avatar_url: currentUser.avatar_url || '',
                           personal_number: currentUser.personal_number || '',
+                          household_name: currentUser.household_name || '',
                           expected_due_date: currentUser.due_date || null,
+                          has_children: currentUser.has_children,
                           is_private: profilePrivacy === 'private',
                         })
                         .eq('user_id', authUserId);
@@ -2595,55 +2839,85 @@ export default function KnottzApp() {
                   <div>
                     <h3 style={{ marginBottom: '0.35rem' }}>Kom igång på 60 sek</h3>
                     <div style={{ color: '#6c6b7a' }}>
-                      Fixa profilen, gå med i grupper och hitta vänner.
+                      Du är {onboardingProgress}% klar. När du når 100% får du en extra inbjudan.
                     </div>
                   </div>
                   <button className="btn btn-ghost" onClick={() => setShowQuickStart(false)}>Stäng</button>
                 </div>
-                <div className="grid-3" style={{ marginTop: '1rem' }}>
-                  <div className="soft-panel">
-                    <div style={{ fontWeight: 700, marginBottom: '0.25rem' }}>Profil</div>
-                    <div style={{ color: '#6c6b7a' }}>Lägg till bild, bio och BF‑datum.</div>
+
+                <div style={{ marginTop: '0.75rem', marginBottom: '1rem' }}>
+                  <div style={{ height: 8, background: '#f1f5f9', borderRadius: 999, overflow: 'hidden' }}>
+                    <div style={{ width: `${onboardingProgress}%`, height: '100%', background: 'linear-gradient(90deg,#111827,#4b5563)' }} />
                   </div>
-                  <div className="soft-panel">
-                    <div style={{ fontWeight: 700, marginBottom: '0.25rem' }}>Grupper</div>
-                    <div style={{ color: '#6c6b7a' }}>Gå med i populära grupper direkt.</div>
-                  </div>
-                  <div className="soft-panel">
-                    <div style={{ fontWeight: 700, marginBottom: '0.25rem' }}>Vänner</div>
-                    <div style={{ color: '#6c6b7a' }}>Hitta familjer du känner.</div>
-                  </div>
+                </div>
+
+                <div className="stack">
+                  {onboardingSteps.map(step => (
+                    <div key={step.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ fontWeight: 600 }}>{step.label}</div>
+                      {step.done ? (
+                        <span className="chip">Klar</span>
+                      ) : (
+                        <button className="btn btn-soft" onClick={() => focusOnboardingStep(step.id)}>Fixa</button>
+                      )}
+                    </div>
+                  ))}
                 </div>
 
                 <div className="section grid-2">
                   <div className="card" style={{ boxShadow: 'none', border: '1px solid var(--border)' }}>
                     <h4 style={{ marginBottom: '0.5rem' }}>Populära grupper</h4>
+                    <input
+                      className="input"
+                      placeholder="Sök grupp"
+                      value={quickGroupSearch}
+                      onChange={(e) => setQuickGroupSearch(e.target.value)}
+                      style={{ marginBottom: '0.75rem' }}
+                    />
                     <div className="stack">
-                      {groups.slice(0, 3).map(group => (
-                        <div key={group.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <div>
-                            <div style={{ fontWeight: 700 }}>{group.name}</div>
-                            <div style={{ fontSize: '0.85rem', color: '#6c6b7a' }}>{group.members} medlemmar</div>
+                      {groups
+                        .filter(group => group.name.toLowerCase().includes(quickGroupSearch.toLowerCase()))
+                        .slice(0, 5)
+                        .map(group => (
+                          <div key={group.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div>
+                              <div style={{ fontWeight: 700 }}>{group.name}</div>
+                              <div style={{ fontSize: '0.85rem', color: '#6c6b7a' }}>{group.members} medlemmar</div>
+                            </div>
+                            <button className="btn btn-outline" disabled={!canInteract} onClick={() => toggleGroupMembership(group.id)}>
+                              {group.is_member ? 'Följer' : 'Gå med'}
+                            </button>
                           </div>
-                          <button className="btn btn-outline" disabled={!canInteract} onClick={() => toggleGroupMembership(group.id)}>
-                            {group.is_member ? 'Följer' : 'Gå med'}
-                          </button>
-                        </div>
-                      ))}
+                        ))}
                     </div>
                   </div>
                   <div className="card" style={{ boxShadow: 'none', border: '1px solid var(--border)' }}>
                     <h4 style={{ marginBottom: '0.5rem' }}>Vänförslag</h4>
+                    <input
+                      className="input"
+                      placeholder="Sök vän"
+                      value={quickFriendSearch}
+                      onChange={(e) => setQuickFriendSearch(e.target.value)}
+                      style={{ marginBottom: '0.75rem' }}
+                    />
                     <div className="stack">
-                      {MOCK_FRIEND_SUGGESTIONS.map(friend => (
-                        <div key={friend.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <div>
-                            <div style={{ fontWeight: 700 }}>{friend.name}</div>
-                            <div style={{ fontSize: '0.85rem', color: '#6c6b7a' }}>{friend.mutuals} gemensamma</div>
+                      {users
+                        .filter(user => {
+                          const term = quickFriendSearch.toLowerCase();
+                          return user.full_name.toLowerCase().includes(term) || (user.household_name || '').toLowerCase().includes(term);
+                        })
+                        .slice(0, 5)
+                        .map(user => (
+                          <div key={user.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div>
+                              <div style={{ fontWeight: 700 }}>{user.full_name}</div>
+                              <div style={{ fontSize: '0.85rem', color: '#6c6b7a' }}>{user.location || 'Sverige'}</div>
+                            </div>
+                            <button className="btn btn-outline" onClick={() => toggleFollow(user.id)}>
+                              {following.includes(user.id) ? 'Följer' : 'Följ'}
+                            </button>
                           </div>
-                          <button className="btn btn-outline">Lägg till</button>
-                        </div>
-                      ))}
+                        ))}
                     </div>
                     <div style={{ marginTop: '0.75rem', color: '#6c6b7a', fontSize: '0.85rem' }}>
                       Koppla telefon eller Facebook för fler förslag.
@@ -2730,6 +3004,28 @@ export default function KnottzApp() {
             </div>
 
             <div className="section card">
+              <h3 style={{ marginBottom: '0.75rem' }}>Hitta fler grupper</h3>
+              <div className="stack">
+                {groups.filter(g => !g.is_member).slice(0, 4).map(group => (
+                  <div key={group.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                      <div style={{ fontSize: '1.8rem' }}>{group.icon}</div>
+                      <div>
+                        <div style={{ fontWeight: 700 }}>{group.name}</div>
+                        <div style={{ fontSize: '0.85rem', color: '#6c6b7a' }}>
+                          {group.members} medlemmar
+                        </div>
+                      </div>
+                    </div>
+                    <button className="btn btn-outline" disabled={!canInteract} onClick={() => toggleGroupMembership(group.id)}>
+                      Gå med
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="section card">
               <h3 style={{ marginBottom: '0.75rem' }}>Vänner som väntar barn</h3>
               <div className="stack">
                 {users.filter(u => following.includes(u.id)).map(user => (
@@ -2805,6 +3101,8 @@ export default function KnottzApp() {
                           setInviteSendStatus(`Koden skapad, men e‑post kunde inte skickas${suffix}.`);
                         } else {
                           setInviteSendStatus('Inbjudan skickad.');
+                          setInviteSentFlag(true);
+                          localStorage.setItem('knottz_invite_sent', '1');
                         }
                         setInviteEmail('');
                       } catch (err) {
@@ -2970,25 +3268,48 @@ export default function KnottzApp() {
             )}
 
             {profileTab === 'friends' && (
-              <div className="section card">
-                <h3 style={{ marginBottom: '0.75rem' }}>Mina kompisar</h3>
-                <div className="stack">
-                  {users.filter(u => following.includes(u.id)).map(user => (
-                    <div key={user.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-                        {renderAvatar(user, 32)}
-                        <div>
-                          <div style={{ fontWeight: 700 }}>{user.full_name}</div>
-                          <div style={{ fontSize: '0.85rem', color: '#6c6b7a' }}>
-                            Beräknat {new Date(user.due_date).toLocaleDateString('sv-SE')}
+              <div className="section grid-2">
+                <div className="card">
+                  <h3 style={{ marginBottom: '0.75rem' }}>Jag följer</h3>
+                  <div className="stack">
+                    {users.filter(u => following.includes(u.id)).map(user => (
+                      <div key={user.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                          {renderAvatar(user, 32)}
+                          <div>
+                            <div style={{ fontWeight: 700 }}>{user.full_name}</div>
+                            <div style={{ fontSize: '0.85rem', color: '#6c6b7a' }}>
+                              Beräknat {new Date(user.due_date).toLocaleDateString('sv-SE')}
+                            </div>
                           </div>
                         </div>
+                        <button className="btn btn-outline" onClick={() => startConversation(user.id)}>
+                          Meddela
+                        </button>
                       </div>
-                      <button className="btn btn-outline" onClick={() => startConversation(user.id)}>
-                        Meddela
-                      </button>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
+                </div>
+                <div className="card">
+                  <h3 style={{ marginBottom: '0.75rem' }}>Följer mig</h3>
+                  <div className="stack">
+                    {users.filter(u => followers.includes(u.id)).map(user => (
+                      <div key={user.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                          {renderAvatar(user, 32)}
+                          <div>
+                            <div style={{ fontWeight: 700 }}>{user.full_name}</div>
+                            <div style={{ fontSize: '0.85rem', color: '#6c6b7a' }}>
+                              Beräknat {new Date(user.due_date).toLocaleDateString('sv-SE')}
+                            </div>
+                          </div>
+                        </div>
+                        <button className="btn btn-outline" onClick={() => toggleFollow(user.id)}>
+                          {following.includes(user.id) ? 'Följer' : 'Följ'}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}

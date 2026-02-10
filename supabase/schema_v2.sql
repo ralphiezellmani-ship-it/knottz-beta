@@ -24,6 +24,7 @@ create table if not exists public.profiles (
   household_name text,
   expected_due_date date,
   personal_number text,
+  has_children boolean default false,
   is_private boolean default false,
   inviter_id uuid,
   is_admin boolean default false
