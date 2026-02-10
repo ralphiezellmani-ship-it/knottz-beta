@@ -2560,7 +2560,15 @@ export default function KnottzApp() {
                           }),
                         });
                         if (!resp.ok) {
-                          setInviteSendStatus(`Koden skapad, men e‑post kunde inte skickas.`);
+                          let detail = '';
+                          try {
+                            const data = await resp.json();
+                            detail = data.details || data.error || '';
+                          } catch (e) {
+                            detail = await resp.text();
+                          }
+                          const suffix = detail ? ` (${detail})` : '';
+                          setInviteSendStatus(`Koden skapad, men e‑post kunde inte skickas${suffix}.`);
                         } else {
                           setInviteSendStatus('Inbjudan skickad.');
                         }
