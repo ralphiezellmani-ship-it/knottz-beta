@@ -857,25 +857,6 @@ export default function KnottzApp() {
     }
   }, [isAuthenticated]);
 
-  useEffect(() => {
-    if (!isAuthenticated || onboardingProgress < 100) return;
-    const bonusGranted = localStorage.getItem('knottz_onboarding_bonus') === '1';
-    if (bonusGranted) return;
-    const grantBonus = async () => {
-      if (!supabase) return;
-      const { data: sessionData } = await supabase.auth.getUser();
-      const code = `KNOTTZ-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
-      await supabase.from('invites').insert({
-        code,
-        created_by: sessionData?.user?.id || null,
-      });
-      const updated = isAdminUser ? [...inviteCodes, code] : [...inviteCodes, code].slice(0, invitesAvailable + 1);
-      setInviteCodes(updated);
-      localStorage.setItem('knottz_invite_codes', JSON.stringify(updated));
-      localStorage.setItem('knottz_onboarding_bonus', '1');
-    };
-    grantBonus();
-  }, [isAuthenticated, onboardingProgress, inviteCodes.length, invitesAvailable, isAdminUser]);
 
   useEffect(() => {
     setMenuOpen(false);
@@ -1107,6 +1088,26 @@ export default function KnottzApp() {
   const onboardingCompleted = onboardingSteps.filter(step => step.done).length;
   const onboardingTotal = onboardingSteps.length;
   const onboardingProgress = Math.round((onboardingCompleted / onboardingTotal) * 100);
+
+  useEffect(() => {
+    if (!isAuthenticated || onboardingProgress < 100) return;
+    const bonusGranted = localStorage.getItem('knottz_onboarding_bonus') === '1';
+    if (bonusGranted) return;
+    const grantBonus = async () => {
+      if (!supabase) return;
+      const { data: sessionData } = await supabase.auth.getUser();
+      const code = `KNOTTZ-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+      await supabase.from('invites').insert({
+        code,
+        created_by: sessionData?.user?.id || null,
+      });
+      const updated = isAdminUser ? [...inviteCodes, code] : [...inviteCodes, code].slice(0, invitesAvailable + 1);
+      setInviteCodes(updated);
+      localStorage.setItem('knottz_invite_codes', JSON.stringify(updated));
+      localStorage.setItem('knottz_onboarding_bonus', '1');
+    };
+    grantBonus();
+  }, [isAuthenticated, onboardingProgress, inviteCodes.length, invitesAvailable, isAdminUser]);
 
   const handleNewPostMedia = (e) => {
     const files = Array.from(e.target.files || []);
