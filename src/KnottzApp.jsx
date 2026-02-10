@@ -504,6 +504,7 @@ export default function KnottzApp() {
   const [authPassword, setAuthPassword] = useState('');
   const [authError, setAuthError] = useState('');
   const [authNotice, setAuthNotice] = useState('');
+  const pendingSignupKey = 'knottz_pending_signup';
   const [menuOpen, setMenuOpen] = useState(false);
   const adminEmails = (import.meta.env.VITE_ADMIN_EMAILS || '').split(',').map(s => s.trim()).filter(Boolean);
   const [authUserId, setAuthUserId] = useState(null);
@@ -555,6 +556,9 @@ export default function KnottzApp() {
     if (invite) {
       localStorage.setItem('knottz_invite', invite);
       setInviteStatus({ hasInvite: true, code: invite });
+      setInviteInput(invite);
+      setAuthMode('signup');
+      if (!isAuthenticated) setView('auth');
       window.history.replaceState({}, '', window.location.pathname);
       return;
     }
@@ -593,6 +597,8 @@ export default function KnottzApp() {
       avatar_url: profile?.avatar_url || '',
       location: profile?.location || '',
       household_name: profile?.household_name || '',
+      personal_number: profile?.personal_number || '',
+      is_private: profile?.is_private || false,
       is_new_pregnancy: true,
     };
   };
@@ -601,7 +607,7 @@ export default function KnottzApp() {
     if (!supabase) return;
     const { data } = await supabase
       .from('profiles')
-      .select('id,user_id,email,display_name,bio,avatar_url,location,expected_due_date,household_name,is_private');
+      .select('id,user_id,email,display_name,bio,avatar_url,location,expected_due_date,household_name,is_private,personal_number');
     if (data && data.length) {
       setUsers(data.map(mapProfileToUser));
     }
@@ -622,38 +628,134 @@ export default function KnottzApp() {
     if (!supabase || !userId) return;
     const { data } = await supabase
       .from('profiles')
-      .select('id,user_id,email,display_name,bio,avatar_url,location,expected_due_date,household_name,is_private')
+      .select('id,user_id,email,display_name,bio,avatar_url,location,expected_due_date,household_name,is_private,personal_number')
       .eq('user_id', userId)
       .maybeSingle();
     if (data) {
       const mapped = mapProfileToUser(data);
       setCurrentUser(mapped);
+      setProfilePrivacy(data.is_private ? 'private' : 'public');
+      return mapped;
     }
+  };
+
+  const ensureProfileFromPending = async (user) => {
+    if (!supabase || !user) return;
+    const pendingRaw = localStorage.getItem(pendingSignupKey);
+    if (!pendingRaw) return;
+    const pending = JSON.parse(pendingRaw);
+
+    const { data: existing } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('user_id', user.id)
+      .maybeSingle();
+    if (existing) {
+      localStorage.removeItem(pendingSignupKey);
+      return;
+    }
+
+    const household = {
+      name: pending.householdName || `Hushåll ${pending.parentOne || 'Ny'}`,
+      account_type: pending.accountType || 'family',
+      parent1_name: pending.parentOne || null,
+      parent2_name: pending.parentTwo || null,
+    };
+    const { data: householdRow, error: householdErr } = await supabase
+      .from('households')
+      .insert(household)
+      .select('id')
+      .single();
+    if (householdErr) return;
+
+    let inviteRow = null;
+    if (INVITE_REQUIRED && pending.inviteInput) {
+      const { data } = await supabase
+        .from('invites')
+        .select('id, created_by, redeemed_at')
+        .eq('code', pending.inviteInput)
+        .maybeSingle();
+      inviteRow = data;
+    }
+
+    const profile = {
+      id: user.id,
+      user_id: user.id,
+      household_id: householdRow.id,
+      email: pending.authEmail || user.email,
+      display_name: pending.parentOne || pending.householdName || user.email,
+      bio: '',
+      avatar_url: '',
+      expected_due_date: pending.expectedDueDate || null,
+      location: '',
+      household_name: pending.householdName || '',
+      is_private: pending.profilePrivacy === 'private',
+      personal_number: '',
+      inviter_id: inviteRow?.created_by || null,
+      is_admin: adminEmails.includes(pending.authEmail || user.email),
+    };
+    const { error: profileErr } = await supabase.from('profiles').insert(profile);
+    if (profileErr) return;
+
+    const childrenRows = (pending.existingChildren || [])
+      .filter((c) => c.birthDate)
+      .map((c) => ({
+        household_id: householdRow.id,
+        name: c.name || '',
+        birth_date: c.birthDate,
+      }));
+    if (childrenRows.length > 0) {
+      await supabase.from('children').insert(childrenRows);
+    }
+
+    if (INVITE_REQUIRED && inviteRow?.id) {
+      await supabase
+        .from('invites')
+        .update({ redeemed_at: new Date().toISOString(), redeemed_by: user.id })
+        .eq('code', pending.inviteInput);
+    }
+
+    const initialCodes = Array.from({ length: 3 }).map(() => `KNOTTZ-${Math.random().toString(36).slice(2, 8).toUpperCase()}`);
+    await supabase.from('invites').insert(
+      initialCodes.map(code => ({ code, created_by: user.id }))
+    );
+    setInviteCodes(initialCodes);
+    localStorage.setItem('knottz_invite_codes', JSON.stringify(initialCodes));
+
+    localStorage.removeItem(pendingSignupKey);
   };
 
   useEffect(() => {
     if (!supabase) return;
-    supabase.auth.getSession().then(({ data }) => {
+    supabase.auth.getSession().then(async ({ data }) => {
       if (data.session) {
         const session = data.session;
         setAuthEmail(session.user.email || '');
         setAuthUserId(session.user.id);
         setIsAuthenticated(true);
-        setView('feed');
-        loadCurrentProfile(session.user.id);
-        loadProfiles();
-        loadFollowing(session.user.id);
+        await ensureProfileFromPending(session.user);
+        const profile = await loadCurrentProfile(session.user.id);
+        await loadProfiles();
+        await loadFollowing(session.user.id);
+        const complete = profile ? Boolean(
+          profile.full_name && profile.personal_number && profile.bio && profile.avatar_url && profile.due_date
+        ) : false;
+        setView(complete ? 'feed' : 'profile');
       }
     });
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session) {
         setAuthEmail(session.user.email || '');
         setAuthUserId(session.user.id);
         setIsAuthenticated(true);
-        setView('feed');
-        loadCurrentProfile(session.user.id);
-        loadProfiles();
-        loadFollowing(session.user.id);
+        await ensureProfileFromPending(session.user);
+        const profile = await loadCurrentProfile(session.user.id);
+        await loadProfiles();
+        await loadFollowing(session.user.id);
+        const complete = profile ? Boolean(
+          profile.full_name && profile.personal_number && profile.bio && profile.avatar_url && profile.due_date
+        ) : false;
+        setView(complete ? 'feed' : 'profile');
       } else {
         setIsAuthenticated(false);
         setAuthUserId(null);
@@ -753,6 +855,7 @@ export default function KnottzApp() {
 
   // Skapa nytt inlägg
   const createPost = () => {
+    if (!canInteract) return;
     if (!newPostContent.trim()) return;
     
     const newPost = {
@@ -790,6 +893,7 @@ export default function KnottzApp() {
 
   // Lägg till kommentar
   const addComment = (postId) => {
+    if (!canInteract) return;
     if (!newComment.trim()) return;
     
     const comment = {
@@ -867,8 +971,16 @@ export default function KnottzApp() {
   };
 
   const isProfileComplete = () => {
-    return Boolean(currentUser.bio && currentUser.due_date);
+    return Boolean(
+      currentUser.full_name &&
+      currentUser.personal_number &&
+      currentUser.bio &&
+      currentUser.avatar_url &&
+      currentUser.due_date
+    );
   };
+
+  const canInteract = isAuthenticated && isProfileComplete();
 
   const handleNewPostMedia = (e) => {
     const files = Array.from(e.target.files || []);
@@ -945,84 +1057,20 @@ export default function KnottzApp() {
       password: authPassword,
     });
     if (error || !data.user) return setAuthError('Kunde inte skapa konto');
-    if (!data.session) {
-      setAuthNotice('Verifiera via e‑post för att slutföra din registrering.');
-      return;
-    }
-
-    const userId = data.user.id;
-    const household = {
-      name: householdName || `Hushåll ${parentOne || 'Ny'}`,
-      account_type: accountType,
-      parent1_name: parentOne || null,
-      parent2_name: parentTwo || null,
+    const pendingPayload = {
+      inviteInput,
+      accountType,
+      householdName,
+      parentOne,
+      parentTwo,
+      expectedDueDate,
+      existingChildren,
+      profilePrivacy,
+      authEmail,
     };
-
-    const { data: householdRow, error: householdErr } = await supabase
-      .from('households')
-      .insert(household)
-      .select('id')
-      .single();
-    if (householdErr) return setAuthError('Kunde inte spara hushåll');
-
-    let inviteRow = null;
-    if (INVITE_REQUIRED && inviteInput) {
-      const { data } = await supabase
-        .from('invites')
-        .select('id, created_by, redeemed_at')
-        .eq('code', inviteInput)
-        .maybeSingle();
-      inviteRow = data;
-    }
-
-    const profile = {
-      id: userId,
-      user_id: userId,
-      household_id: householdRow.id,
-      email: authEmail,
-      display_name: parentOne || householdName || authEmail,
-      bio: '',
-      avatar_url: '',
-      expected_due_date: expectedDueDate || null,
-      location: '',
-      household_name: householdName || '',
-      is_private: profilePrivacy === 'private',
-      personal_number: '',
-      inviter_id: inviteRow?.created_by || null,
-      is_admin: adminEmails.includes(authEmail),
-    };
-    const { error: profileErr } = await supabase.from('profiles').insert(profile);
-    if (profileErr) return setAuthError('Kunde inte spara profil');
-
-    const childrenRows = existingChildren
-      .filter((c) => c.birthDate)
-      .map((c) => ({
-        household_id: householdRow.id,
-        name: c.name || '',
-        birth_date: c.birthDate,
-      }));
-    if (childrenRows.length > 0) {
-      await supabase.from('children').insert(childrenRows);
-    }
-
-    if (INVITE_REQUIRED && inviteRow?.id) {
-      await supabase
-        .from('invites')
-        .update({ redeemed_at: new Date().toISOString(), redeemed_by: userId })
-        .eq('code', inviteInput);
-    }
-
-    if (!isAdminEmail) {
-      const initialCodes = Array.from({ length: 3 }).map(() => `KNOTTZ-${Math.random().toString(36).slice(2, 8).toUpperCase()}`);
-      await supabase.from('invites').insert(
-        initialCodes.map(code => ({ code, created_by: userId }))
-      );
-      setInviteCodes(initialCodes);
-      localStorage.setItem('knottz_invite_codes', JSON.stringify(initialCodes));
-    }
-
-    setIsAuthenticated(true);
-    setView('feed');
+    localStorage.setItem(pendingSignupKey, JSON.stringify(pendingPayload));
+    setAuthNotice('Verifiera via e‑post för att slutföra din registrering.');
+    return;
   };
 
   const generateInviteCode = async () => {
@@ -1047,6 +1095,7 @@ export default function KnottzApp() {
 
   // Gå med/lämna grupp
   const toggleGroupMembership = (groupId) => {
+    if (!canInteract) return;
     setGroups(groups.map(g => 
       g.id === groupId 
         ? { ...g, is_member: !g.is_member, members: g.is_member ? g.members - 1 : g.members + 1 }
@@ -1105,6 +1154,7 @@ export default function KnottzApp() {
 
   // Toggle upvote for must haves
   const toggleMustHaveVote = (id, voteType) => {
+    if (!canInteract) return;
     if (mustHaveVotes[id]) return;
     setMustHaves(mustHaves.map(item => {
       if (item.id === id) {
@@ -1123,6 +1173,7 @@ export default function KnottzApp() {
 
   // Toggle vote for tips
   const toggleTipVote = (id, voteType) => {
+    if (!canInteract) return;
     if (tipVotes[id]) return;
     setTips(tips.map(tip => {
       if (tip.id === id) {
@@ -1745,6 +1796,18 @@ export default function KnottzApp() {
         {view === 'feed' && (
           <div>
             <div className="section fade-in">
+              {!canInteract && (
+                <div className="card card-strong" style={{ marginBottom: '1rem' }}>
+                  <div style={{ fontWeight: 700, marginBottom: '0.25rem' }}>Färdigställ din profil</div>
+                  <div style={{ color: '#6c6b7a' }}>
+                    Ladda upp profilbild, skriv namn, personnummer och BF‑datum för att kunna posta,
+                    rösta och delta i grupper.
+                  </div>
+                  <button className="btn btn-primary" style={{ marginTop: '0.75rem' }} onClick={() => setView('profile')}>
+                    Gå till profil
+                  </button>
+                </div>
+              )}
               <div className="search-bar">
                 <Search size={18} color="#6c6b7a" />
                 <input
@@ -1839,6 +1902,7 @@ export default function KnottzApp() {
               {!showNewPost && (
                 <button
                   onClick={() => setShowNewPost(true)}
+                  disabled={!canInteract}
                   className="card card-dashed"
                   style={{
                     width: '100%',
@@ -2065,7 +2129,7 @@ export default function KnottzApp() {
                           <div style={{ fontSize: '0.85rem', color: '#6c6b7a' }}>{group.members} medlemmar</div>
                         </div>
                       </div>
-                      <button className="btn btn-outline" onClick={() => toggleGroupMembership(group.id)}>Gå med</button>
+                      <button className="btn btn-outline" disabled={!canInteract} onClick={() => toggleGroupMembership(group.id)}>Gå med</button>
                     </div>
                   ))}
                 </div>
@@ -2216,6 +2280,7 @@ export default function KnottzApp() {
                       <button
                         onClick={() => toggleGroupMembership(group.id)}
                         className={`btn ${group.is_member ? 'btn-ghost' : 'btn-primary'}`}
+                        disabled={!canInteract}
                       >
                         {group.is_member ? 'Följer' : 'Gå med'}
                       </button>
@@ -2440,6 +2505,12 @@ export default function KnottzApp() {
                     value={currentUser.location || ''}
                     onChange={(e) => setCurrentUser({ ...currentUser, location: e.target.value })}
                   />
+                  <textarea
+                    className="textarea"
+                    placeholder="Bio"
+                    value={currentUser.bio || ''}
+                    onChange={(e) => setCurrentUser({ ...currentUser, bio: e.target.value })}
+                  />
                   <input
                     className="input"
                     placeholder="Personnummer"
@@ -2476,6 +2547,8 @@ export default function KnottzApp() {
                         .update({
                           display_name: currentUser.full_name || '',
                           location: currentUser.location || '',
+                          bio: currentUser.bio || '',
+                          avatar_url: currentUser.avatar_url || '',
                           personal_number: currentUser.personal_number || '',
                           expected_due_date: currentUser.due_date || null,
                           is_private: profilePrivacy === 'private',
@@ -2527,7 +2600,7 @@ export default function KnottzApp() {
                             <div style={{ fontWeight: 700 }}>{group.name}</div>
                             <div style={{ fontSize: '0.85rem', color: '#6c6b7a' }}>{group.members} medlemmar</div>
                           </div>
-                          <button className="btn btn-outline" onClick={() => toggleGroupMembership(group.id)}>
+                          <button className="btn btn-outline" disabled={!canInteract} onClick={() => toggleGroupMembership(group.id)}>
                             {group.is_member ? 'Följer' : 'Gå med'}
                           </button>
                         </div>
@@ -2932,8 +3005,8 @@ export default function KnottzApp() {
                       <p style={{ marginTop: '0.5rem' }}>{item.description}</p>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', minWidth: '140px' }}>
-                      <button className="btn btn-soft" onClick={() => toggleMustHaveVote(item.id, 'up')}>Rösta {item.upvotes}</button>
-                      <button className="btn btn-soft" onClick={() => toggleMustHaveVote(item.id, 'verified')}>{item.verified_count} har den</button>
+                      <button className="btn btn-soft" disabled={!canInteract} onClick={() => toggleMustHaveVote(item.id, 'up')}>Rösta {item.upvotes}</button>
+                      <button className="btn btn-soft" disabled={!canInteract} onClick={() => toggleMustHaveVote(item.id, 'verified')}>{item.verified_count} har den</button>
                     </div>
                   </div>
                 </div>
@@ -2990,8 +3063,8 @@ export default function KnottzApp() {
                   <div style={{ fontSize: '0.85rem', color: '#6c6b7a' }}>{tip.category}</div>
                   <p style={{ marginTop: '0.5rem' }}>{tip.content}</p>
                   <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.75rem' }}>
-                    <button className="btn btn-soft" onClick={() => toggleTipVote(tip.id, 'up')}>Rösta {tip.upvotes}</button>
-                    <button className="btn btn-soft" onClick={() => toggleTipVote(tip.id, 'helpful')}>Hjälpte {tip.helpful_count}</button>
+                    <button className="btn btn-soft" disabled={!canInteract} onClick={() => toggleTipVote(tip.id, 'up')}>Rösta {tip.upvotes}</button>
+                    <button className="btn btn-soft" disabled={!canInteract} onClick={() => toggleTipVote(tip.id, 'helpful')}>Hjälpte {tip.helpful_count}</button>
                   </div>
                 </div>
               ))}
