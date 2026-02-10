@@ -360,6 +360,21 @@ const POPULAR_NAMES_2024 = {
   boys: ['Noah', 'William', 'Liam'],
 };
 
+const SCB_BIRTHS_2024_MONTHS = [
+  { month: 'Januari', count: 7935 },
+  { month: 'Februari', count: 7913 },
+  { month: 'Mars', count: 8778 },
+  { month: 'April', count: 8553 },
+  { month: 'Maj', count: 8937 },
+  { month: 'Juni', count: 8437 },
+  { month: 'Juli', count: 8887 },
+  { month: 'Augusti', count: 8652 },
+  { month: 'September', count: 7940 },
+  { month: 'Oktober', count: 8174 },
+  { month: 'November', count: 7264 },
+  { month: 'December', count: 6981 },
+];
+
 // Community stats (visas i appen)
 const COMMUNITY_STATS = {
   total_members: 1246,
@@ -513,6 +528,10 @@ export default function KnottzApp() {
   const [mustHaveVotes, setMustHaveVotes] = useState({});
   const [tipVotes, setTipVotes] = useState({});
   const [mustHaveRequests, setMustHaveRequests] = useState([]);
+  const [mustHaveCategory, setMustHaveCategory] = useState('Alla');
+  const [scbPanel, setScbPanel] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteSendStatus, setInviteSendStatus] = useState('');
   
   // New features
   const [mustHaves, setMustHaves] = useState(MOCK_MUST_HAVES);
@@ -630,6 +649,11 @@ export default function KnottzApp() {
       user.username.toLowerCase().includes(searchLower) ||
       (user.household_name || '').toLowerCase().includes(searchLower))
   );
+
+  const mustHaveCategories = ['Alla', ...new Set(mustHaves.map(item => item.category))];
+  const filteredMustHaves = mustHaveCategory === 'Alla'
+    ? mustHaves
+    : mustHaves.filter(item => item.category === mustHaveCategory);
 
   const trendingMustHaves = [...mustHaves]
     .sort((a, b) => (b.upvotes + b.verified_count * 2) - (a.upvotes + a.verified_count * 2))
@@ -2067,6 +2091,11 @@ export default function KnottzApp() {
                   </div>
                 </div>
               </div>
+              <div className="section">
+                <button className="btn btn-soft" onClick={() => setScbPanel(true)}>
+                  Se detaljerad SCB‑statistik
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -2491,6 +2520,50 @@ export default function KnottzApp() {
               <div style={{ color: '#6c6b7a', marginBottom: '0.75rem' }}>
                 Du får fler inbjudningar genom att vara aktiv. Var 10:e poäng ger en extra kod.
               </div>
+              <div className="soft-panel" style={{ marginBottom: '1rem' }}>
+                <div style={{ fontWeight: 700, marginBottom: '0.5rem' }}>Bjud in via e‑post</div>
+                <div className="stack">
+                  <input
+                    className="input"
+                    placeholder="vän@email.com"
+                    value={inviteEmail}
+                    onChange={(e) => setInviteEmail(e.target.value)}
+                  />
+                  <button
+                    className="btn btn-primary"
+                    onClick={async () => {
+                      if (!inviteEmail.trim()) return;
+                      try {
+                        if (!supabase) {
+                          setInviteSendStatus('Supabase saknas');
+                          return;
+                        }
+                        const { data: sessionData } = await supabase.auth.getUser();
+                        const code = `KNOTTZ-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+                        await supabase.from('invites').insert({
+                          code,
+                          created_by: sessionData?.user?.id || null,
+                        });
+                        const updated = [...inviteCodes, code].slice(0, invitesAvailable);
+                        setInviteCodes(updated);
+                        localStorage.setItem('knottz_invite_codes', JSON.stringify(updated));
+                        setInviteSendStatus(`Skickad (mock). Kod: ${code}`);
+                        setInviteEmail('');
+                      } catch (err) {
+                        setInviteSendStatus('Kunde inte skicka inbjudan.');
+                      }
+                    }}
+                  >
+                    Skicka inbjudan
+                  </button>
+                  {inviteSendStatus && (
+                    <div style={{ color: '#6c6b7a', fontSize: '0.85rem' }}>{inviteSendStatus}</div>
+                  )}
+                  <div style={{ color: '#6c6b7a', fontSize: '0.85rem' }}>
+                    (Email‑utskick kopplas senare. Just nu registreras koden i systemet.)
+                  </div>
+                </div>
+              </div>
               <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
                 <span className="chip">Tillgängliga: {invitesAvailable}</span>
                 <span className="chip">Aktivitetspoäng: {myActivityScore}</span>
@@ -2674,8 +2747,19 @@ export default function KnottzApp() {
               <h2 className="section-title">Must Haves</h2>
               <button className="btn btn-ghost" onClick={backToPrevious}>Tillbaka</button>
             </div>
+            <div className="subnav" style={{ flexWrap: 'wrap', marginBottom: '1rem' }}>
+              {mustHaveCategories.map(cat => (
+                <button
+                  key={cat}
+                  className={`btn ${mustHaveCategory === cat ? 'btn-primary' : 'btn-soft'}`}
+                  onClick={() => setMustHaveCategory(cat)}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
             <div className="stack">
-              {mustHaves.map(item => (
+              {filteredMustHaves.map(item => (
                 <div
                   key={item.id}
                   className="card"
@@ -2868,6 +2952,47 @@ export default function KnottzApp() {
                   <div style={{ marginTop: '0.6rem', fontWeight: 700 }}>{shot.title}</div>
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {scbPanel && (
+        <div className="modal-overlay" onClick={() => setScbPanel(false)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h2 style={{ margin: 0 }}>SCB – födslar 2024</h2>
+              <button className="btn btn-ghost" onClick={() => setScbPanel(false)}>Stäng</button>
+            </div>
+            <div className="section">
+              <div className="grid-3">
+                <div className="stat-card">
+                  <div className="stat-value">{SCB_STATS.births_2024_total}</div>
+                  <div>Totalt</div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-value">{SCB_STATS.births_2024_boys}</div>
+                  <div>Pojkar</div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-value">{SCB_STATS.births_2024_girls}</div>
+                  <div>Flickor</div>
+                </div>
+              </div>
+            </div>
+            <div className="section">
+              <h3 style={{ marginBottom: '0.75rem' }}>Födslar per månad (2024)</h3>
+              <div className="stack">
+                {SCB_BIRTHS_2024_MONTHS.map((item) => (
+                  <div key={item.month} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <div>{item.month}</div>
+                    <span className="chip">{item.count}</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ color: '#6c6b7a', fontSize: '0.85rem', marginTop: '0.75rem' }}>
+                Källa: SCB/Skatteverket (2024).
+              </div>
             </div>
           </div>
         </div>
