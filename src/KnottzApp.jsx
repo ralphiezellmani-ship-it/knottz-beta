@@ -483,7 +483,19 @@ const MOCK_COMMENTS = {
 
 export default function KnottzApp() {
   const INVITE_REQUIRED = true; // Invite-only for signup
-  const [currentUser, setCurrentUser] = useState(MOCK_USERS[0]); // Inloggad som Anna
+  const [currentUser, setCurrentUser] = useState({
+    id: '',
+    username: '',
+    full_name: '',
+    bio: '',
+    due_date: '',
+    current_week: 0,
+    avatar_url: '',
+    location: '',
+    household_name: '',
+    personal_number: '',
+    is_new_pregnancy: false,
+  });
   const [view, setView] = useState('auth'); // auth, guest, feed, groups, profile, musthaves, tips, post, user
   const [previousView, setPreviousView] = useState('feed');
   const [detailId, setDetailId] = useState(null);
@@ -1048,7 +1060,8 @@ export default function KnottzApp() {
     setAuthNotice('');
     if (!supabase) return setAuthError('Supabase saknas');
     const isAdminEmail = adminEmails.includes(authEmail);
-    if (INVITE_REQUIRED && !canUseInvite(inviteInput) && !isAdminEmail) {
+    const effectiveInvite = inviteInput || inviteStatus.code;
+    if (INVITE_REQUIRED && !canUseInvite(effectiveInvite) && !isAdminEmail) {
       return setAuthError('Ogiltig inbjudningskod');
     }
 
@@ -1058,7 +1071,7 @@ export default function KnottzApp() {
     });
     if (error || !data.user) return setAuthError('Kunde inte skapa konto');
     const pendingPayload = {
-      inviteInput,
+      inviteInput: effectiveInvite,
       accountType,
       householdName,
       parentOne,
@@ -1600,6 +1613,9 @@ export default function KnottzApp() {
               aria-label="Öppna profil"
             >
               {renderAvatar(currentUser, 34)}
+              <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>
+                {currentUser.full_name || 'Din profil'}
+              </div>
             </button>
           ) : (
             <button className="btn btn-primary" onClick={() => setView('auth')}>
@@ -1685,9 +1701,14 @@ export default function KnottzApp() {
                   <input
                     className="input"
                     placeholder="Inbjudningskod"
-                    value={inviteInput}
+                    value={inviteInput || inviteStatus.code}
                     onChange={(e) => setInviteInput(e.target.value)}
                   />
+                )}
+                {INVITE_REQUIRED && authMode === 'signup' && inviteStatus.code && (
+                  <div className="pill" style={{ width: 'fit-content' }}>
+                    Kod: {inviteStatus.code}
+                  </div>
                 )}
                 <input className="input" placeholder="E‑post" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} />
                 <input className="input" placeholder="Lösenord" type="password" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} />
@@ -2451,8 +2472,10 @@ export default function KnottzApp() {
                     </label>
                   </div>
                   <div>
-                    <h2 style={{ fontSize: '2rem', marginBottom: '0.25rem' }}>{currentUser.full_name}</h2>
-                    <div style={{ color: '#6c6b7a', fontSize: '1.1rem' }}>@{currentUser.username}</div>
+                    <h2 style={{ fontSize: '2rem', marginBottom: '0.25rem' }}>{currentUser.full_name || 'Din profil'}</h2>
+                    <div style={{ color: '#6c6b7a', fontSize: '1.1rem' }}>
+                      @{currentUser.username || 'knottz'}
+                    </div>
                     <div style={{
                       marginTop: '0.5rem',
                       padding: '0.4rem 1rem',
@@ -2481,8 +2504,10 @@ export default function KnottzApp() {
               </div>
 
               <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                <span className="chip">📍 {currentUser.location}</span>
-                <span className="chip">📅 {new Date(currentUser.due_date).toLocaleDateString('sv-SE', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                <span className="chip">📍 {currentUser.location || 'Lägg till ort'}</span>
+                <span className="chip">
+                  📅 {currentUser.due_date ? new Date(currentUser.due_date).toLocaleDateString('sv-SE', { year: 'numeric', month: 'long', day: 'numeric' }) : 'Lägg till BF'}
+                </span>
                 <span className="chip">{posts.filter(p => p.user_id === currentUser.id).length} inlägg</span>
                 <span className="chip">{following.length} följer</span>
                 {adminEmails.includes(authEmail) && <span className="chip">Admin</span>}
