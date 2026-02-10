@@ -506,6 +506,7 @@ export default function KnottzApp() {
   const [authNotice, setAuthNotice] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
   const adminEmails = (import.meta.env.VITE_ADMIN_EMAILS || '').split(',').map(s => s.trim()).filter(Boolean);
+  const [authUserId, setAuthUserId] = useState(null);
   const [posts, setPosts] = useState(MOCK_POSTS);
   const [users, setUsers] = useState(MOCK_USERS);
   const [following, setFollowing] = useState(['2', '3']); // Anna följer Erik och Sara
@@ -578,22 +579,84 @@ export default function KnottzApp() {
     setNewPostVisibility(profilePrivacy);
   }, [profilePrivacy]);
 
+  const mapProfileToUser = (profile) => {
+    const username = profile?.email ? profile.email.split('@')[0] : 'knottz';
+    const expectedDate = profile?.expected_due_date || profile?.due_date || null;
+    const currentWeek = expectedDate ? Math.max(1, Math.min(40, Math.floor((280 - ((new Date(expectedDate) - new Date()) / 86400000)) / 7))) : 20;
+    return {
+      id: profile?.user_id || profile?.id,
+      username,
+      full_name: profile?.display_name || username,
+      bio: profile?.bio || '',
+      due_date: expectedDate,
+      current_week: currentWeek,
+      avatar_url: profile?.avatar_url || '',
+      location: profile?.location || '',
+      household_name: profile?.household_name || '',
+      is_new_pregnancy: true,
+    };
+  };
+
+  const loadProfiles = async () => {
+    if (!supabase) return;
+    const { data } = await supabase
+      .from('profiles')
+      .select('id,user_id,email,display_name,bio,avatar_url,location,expected_due_date,household_name,is_private');
+    if (data && data.length) {
+      setUsers(data.map(mapProfileToUser));
+    }
+  };
+
+  const loadFollowing = async (userId) => {
+    if (!supabase || !userId) return;
+    const { data } = await supabase
+      .from('follows')
+      .select('followee_id')
+      .eq('follower_id', userId);
+    if (data) {
+      setFollowing(data.map(row => row.followee_id));
+    }
+  };
+
+  const loadCurrentProfile = async (userId) => {
+    if (!supabase || !userId) return;
+    const { data } = await supabase
+      .from('profiles')
+      .select('id,user_id,email,display_name,bio,avatar_url,location,expected_due_date,household_name,is_private')
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (data) {
+      const mapped = mapProfileToUser(data);
+      setCurrentUser(mapped);
+    }
+  };
+
   useEffect(() => {
     if (!supabase) return;
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) {
-        setAuthEmail(data.session.user.email || '');
+        const session = data.session;
+        setAuthEmail(session.user.email || '');
+        setAuthUserId(session.user.id);
         setIsAuthenticated(true);
         setView('feed');
+        loadCurrentProfile(session.user.id);
+        loadProfiles();
+        loadFollowing(session.user.id);
       }
     });
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session) {
         setAuthEmail(session.user.email || '');
+        setAuthUserId(session.user.id);
         setIsAuthenticated(true);
         setView('feed');
+        loadCurrentProfile(session.user.id);
+        loadProfiles();
+        loadFollowing(session.user.id);
       } else {
         setIsAuthenticated(false);
+        setAuthUserId(null);
       }
     });
     return () => authListener.subscription.unsubscribe();
@@ -711,11 +774,17 @@ export default function KnottzApp() {
   };
 
   // Följ/avfölja användare
-  const toggleFollow = (userId) => {
+  const toggleFollow = async (userId) => {
     if (following.includes(userId)) {
       setFollowing(following.filter(id => id !== userId));
+      if (supabase && authUserId) {
+        await supabase.from('follows').delete().eq('follower_id', authUserId).eq('followee_id', userId);
+      }
     } else {
       setFollowing([...following, userId]);
+      if (supabase && authUserId) {
+        await supabase.from('follows').insert({ follower_id: authUserId, followee_id: userId });
+      }
     }
   };
 
@@ -915,6 +984,10 @@ export default function KnottzApp() {
       bio: '',
       avatar_url: '',
       expected_due_date: expectedDueDate || null,
+      location: '',
+      household_name: householdName || '',
+      is_private: profilePrivacy === 'private',
+      personal_number: '',
       inviter_id: inviteRow?.created_by || null,
       is_admin: adminEmails.includes(authEmail),
     };
@@ -937,6 +1010,15 @@ export default function KnottzApp() {
         .from('invites')
         .update({ redeemed_at: new Date().toISOString(), redeemed_by: userId })
         .eq('code', inviteInput);
+    }
+
+    if (!isAdminEmail) {
+      const initialCodes = Array.from({ length: 3 }).map(() => `KNOTTZ-${Math.random().toString(36).slice(2, 8).toUpperCase()}`);
+      await supabase.from('invites').insert(
+        initialCodes.map(code => ({ code, created_by: userId }))
+      );
+      setInviteCodes(initialCodes);
+      localStorage.setItem('knottz_invite_codes', JSON.stringify(initialCodes));
     }
 
     setIsAuthenticated(true);
@@ -1460,27 +1542,14 @@ export default function KnottzApp() {
           </div>
           
           {isAuthenticated ? (
-            <div className="menu-wrap">
-              <button
-                className="user-chip"
-                onClick={() => setMenuOpen(!menuOpen)}
-                style={{ border: 'none', cursor: 'pointer' }}
-              >
-                {renderAvatar(currentUser, 34)}
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{currentUser.full_name}</div>
-                  <div style={{ fontSize: '0.75rem', color: '#666' }}>Vecka {currentUser.current_week}</div>
-                </div>
-              </button>
-              {menuOpen && (
-                <div className="menu-panel">
-                  <button className="menu-item" onClick={() => setView('profile')}>Profil</button>
-                  <button className="menu-item" onClick={() => setView('saved')}>Sparade inlägg</button>
-                  <button className="menu-item" onClick={() => setView('settings')}>Inställningar</button>
-                  <button className="menu-item" onClick={handleLogout}>Logga ut</button>
-                </div>
-              )}
-            </div>
+            <button
+              className="user-chip"
+              onClick={() => setView('profile')}
+              style={{ border: 'none', cursor: 'pointer' }}
+              aria-label="Öppna profil"
+            >
+              {renderAvatar(currentUser, 34)}
+            </button>
           ) : (
             <button className="btn btn-primary" onClick={() => setView('auth')}>
               Logga in
@@ -1495,7 +1564,7 @@ export default function KnottzApp() {
           <div className="app-nav-inner">
           {[
             { id: 'feed', label: 'Flöde', icon: '' },
-            { id: 'groups', label: 'Övrigt', icon: '' },
+            { id: 'groups', label: 'AlltIAllo', icon: '' },
             { id: 'profile', label: 'Profil', icon: '', badge: conversations.reduce((sum, c) => sum + c.unread, 0) },
           ].map(({ id, label, icon, badge }) => (
             <button
@@ -1517,7 +1586,7 @@ export default function KnottzApp() {
       {/* Main Content */}
       <div className="app-main">
         {/* INVITE GATE (disabled unless flag on) */}
-        {INVITE_REQUIRED && !inviteStatus.hasInvite && view !== 'auth' && (
+        {INVITE_REQUIRED && !inviteStatus.hasInvite && view !== 'auth' && !isAdminUser && !isAuthenticated && (
           <div className="section" style={{ maxWidth: '520px', margin: '2rem auto' }}>
             <div className="card card-strong">
               <h2 className="section-title">Invite krävs</h2>
@@ -2107,7 +2176,7 @@ export default function KnottzApp() {
         {view === 'groups' && (
           <div>
             <div className="section">
-              <h2 className="section-title">Övrigt</h2>
+              <h2 className="section-title">AlltIAllo</h2>
               <div className="section-subtitle">Hitta din gemenskap, byt erfarenheter och ge vidare.</div>
             </div>
 
@@ -2354,6 +2423,73 @@ export default function KnottzApp() {
                 {adminEmails.includes(authEmail) && <span className="chip">Admin</span>}
               </div>
             </div>
+
+            {editingProfile && (
+              <div className="section card">
+                <h3 style={{ marginBottom: '0.75rem' }}>Redigera profil</h3>
+                <div className="stack">
+                  <input
+                    className="input"
+                    placeholder="Namn"
+                    value={currentUser.full_name || ''}
+                    onChange={(e) => setCurrentUser({ ...currentUser, full_name: e.target.value })}
+                  />
+                  <input
+                    className="input"
+                    placeholder="Ort"
+                    value={currentUser.location || ''}
+                    onChange={(e) => setCurrentUser({ ...currentUser, location: e.target.value })}
+                  />
+                  <input
+                    className="input"
+                    placeholder="Personnummer"
+                    value={currentUser.personal_number || ''}
+                    onChange={(e) => setCurrentUser({ ...currentUser, personal_number: e.target.value })}
+                  />
+                  <label style={{ fontWeight: 600 }}>Beräknat datum för barnet</label>
+                  <input
+                    className="input"
+                    type="date"
+                    value={currentUser.due_date || ''}
+                    onChange={(e) => setCurrentUser({ ...currentUser, due_date: e.target.value })}
+                  />
+                  <div className="subnav">
+                    <button
+                      className={`btn ${profilePrivacy === 'public' ? 'btn-primary' : 'btn-soft'}`}
+                      onClick={() => setProfilePrivacy('public')}
+                    >
+                      Öppen profil
+                    </button>
+                    <button
+                      className={`btn ${profilePrivacy === 'private' ? 'btn-primary' : 'btn-soft'}`}
+                      onClick={() => setProfilePrivacy('private')}
+                    >
+                      Privat profil
+                    </button>
+                  </div>
+                  <button
+                    className="btn btn-primary"
+                    onClick={async () => {
+                      if (!supabase || !authUserId) return;
+                      await supabase
+                        .from('profiles')
+                        .update({
+                          display_name: currentUser.full_name || '',
+                          location: currentUser.location || '',
+                          personal_number: currentUser.personal_number || '',
+                          expected_due_date: currentUser.due_date || null,
+                          is_private: profilePrivacy === 'private',
+                        })
+                        .eq('user_id', authUserId);
+                      loadProfiles();
+                      setEditingProfile(false);
+                    }}
+                  >
+                    Spara
+                  </button>
+                </div>
+              </div>
+            )}
 
             {showQuickStart && (
               <div className="section card fade-in">
