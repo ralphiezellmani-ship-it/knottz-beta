@@ -582,12 +582,14 @@ export default function KnottzApp() {
     if (!supabase) return;
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) {
+        setAuthEmail(data.session.user.email || '');
         setIsAuthenticated(true);
         setView('feed');
       }
     });
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session) {
+        setAuthEmail(session.user.email || '');
         setIsAuthenticated(true);
         setView('feed');
       } else {
@@ -669,7 +671,8 @@ export default function KnottzApp() {
   const myActivityScore = myPostsCount * 2 + myGroupsCount * 2 + votePoints;
   const baseInvites = 3;
   const earnedInvites = Math.floor(myActivityScore / 10);
-  const invitesAvailable = inviteVerified ? baseInvites + earnedInvites : 0;
+  const isAdminUser = adminEmails.includes(authEmail);
+  const invitesAvailable = isAdminUser ? Infinity : (inviteVerified ? baseInvites + earnedInvites : 0);
 
   // Hantera like/unlike
   const toggleLike = (postId) => {
@@ -942,7 +945,7 @@ export default function KnottzApp() {
 
   const generateInviteCode = async () => {
     const code = `KNOTTZ-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
-    const updated = [...inviteCodes, code].slice(0, invitesAvailable);
+    const updated = isAdminUser ? [...inviteCodes, code] : [...inviteCodes, code].slice(0, invitesAvailable);
     setInviteCodes(updated);
     localStorage.setItem('knottz_invite_codes', JSON.stringify(updated));
     if (supabase) {
@@ -2544,7 +2547,7 @@ export default function KnottzApp() {
                           code,
                           created_by: sessionData?.user?.id || null,
                         });
-                        const updated = [...inviteCodes, code].slice(0, invitesAvailable);
+                        const updated = isAdminUser ? [...inviteCodes, code] : [...inviteCodes, code].slice(0, invitesAvailable);
                         setInviteCodes(updated);
                         localStorage.setItem('knottz_invite_codes', JSON.stringify(updated));
                         const resp = await fetch('/api/invite', {
@@ -2575,14 +2578,14 @@ export default function KnottzApp() {
                 </div>
               </div>
               <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                <span className="chip">Tillgängliga: {invitesAvailable}</span>
+                <span className="chip">Tillgängliga: {isAdminUser ? '∞' : invitesAvailable}</span>
                 <span className="chip">Aktivitetspoäng: {myActivityScore}</span>
               </div>
               <div style={{ marginTop: '1rem' }} className="stack">
                 <button
                   className="btn btn-soft"
                   onClick={() => {
-                    if (inviteCodes.length >= invitesAvailable) return;
+                    if (!isAdminUser && inviteCodes.length >= invitesAvailable) return;
                     generateInviteCode();
                   }}
                 >

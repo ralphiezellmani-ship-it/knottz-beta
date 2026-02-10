@@ -6,6 +6,7 @@ export default async function handler(req, res) {
 
   try {
     const { email, code, baseUrl } = req.body || {};
+    console.log('[invite] payload', { email: Boolean(email), code: Boolean(code), baseUrl });
     if (!email || !code) {
       res.status(400).json({ error: 'Missing email or code' });
       return;
@@ -14,6 +15,11 @@ export default async function handler(req, res) {
     const apiKey = process.env.BREVO_API_KEY;
     const senderEmail = process.env.BREVO_SENDER_EMAIL;
     const senderName = process.env.BREVO_SENDER_NAME || 'Knottz';
+    console.log('[invite] env', {
+      hasApiKey: Boolean(apiKey),
+      senderEmail: senderEmail || null,
+      senderName,
+    });
 
     if (!apiKey || !senderEmail) {
       res.status(500).json({ error: 'Missing Brevo configuration' });
@@ -48,12 +54,14 @@ export default async function handler(req, res) {
 
     if (!response.ok) {
       const text = await response.text();
+      console.error('[invite] brevo error', response.status, text);
       res.status(502).json({ error: 'Brevo error', details: text });
       return;
     }
 
     res.status(200).json({ ok: true });
   } catch (err) {
+    console.error('[invite] server error', err);
     res.status(500).json({ error: 'Server error' });
   }
 }
