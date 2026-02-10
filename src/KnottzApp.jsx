@@ -2547,7 +2547,20 @@ export default function KnottzApp() {
                         const updated = [...inviteCodes, code].slice(0, invitesAvailable);
                         setInviteCodes(updated);
                         localStorage.setItem('knottz_invite_codes', JSON.stringify(updated));
-                        setInviteSendStatus(`Skickad (mock). Kod: ${code}`);
+                        const resp = await fetch('/api/invite', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            email: inviteEmail.trim(),
+                            code,
+                            baseUrl: window.location.origin,
+                          }),
+                        });
+                        if (!resp.ok) {
+                          setInviteSendStatus(`Koden skapad, men e‑post kunde inte skickas.`);
+                        } else {
+                          setInviteSendStatus('Inbjudan skickad.');
+                        }
                         setInviteEmail('');
                       } catch (err) {
                         setInviteSendStatus('Kunde inte skicka inbjudan.');
@@ -2559,9 +2572,6 @@ export default function KnottzApp() {
                   {inviteSendStatus && (
                     <div style={{ color: '#6c6b7a', fontSize: '0.85rem' }}>{inviteSendStatus}</div>
                   )}
-                  <div style={{ color: '#6c6b7a', fontSize: '0.85rem' }}>
-                    (Email‑utskick kopplas senare. Just nu registreras koden i systemet.)
-                  </div>
                 </div>
               </div>
               <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
