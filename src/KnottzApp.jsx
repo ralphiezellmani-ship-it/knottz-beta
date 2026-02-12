@@ -610,7 +610,7 @@ export default function KnottzApp() {
   });
   const [inviteInput, setInviteInput] = useState("");
   const [inviteCodes, setInviteCodes] = useState([]);
-  const [inviteVerified, _setInviteVerified] = useState(false);
+  // inviteVerified removed (invites now based on auth + activity)
   const [accountType, setAccountType] = useState("family"); // family, solo
   const [profilePrivacy, setProfilePrivacy] = useState("public"); // public, private
   const [householdName, setHouseholdName] = useState("");
@@ -625,7 +625,7 @@ export default function KnottzApp() {
   const [authError, setAuthError] = useState("");
   const [authNotice, setAuthNotice] = useState("");
   const pendingSignupKey = "knottz_pending_signup";
-  const [_menuOpen, setMenuOpen] = useState(false);
+  // menuOpen removed
   const adminEmails = (import.meta.env.VITE_ADMIN_EMAILS || "")
     .split(",")
     .map((s) => s.trim())
@@ -640,7 +640,13 @@ export default function KnottzApp() {
   const [newChildName, setNewChildName] = useState("");
   const [newChildBirthDate, setNewChildBirthDate] = useState("");
   // ─── Supabase Posts Hook ─────────────────────────────────
-  const { posts: dbPosts, myLikes, isLikedByMe } = useSupabasePosts(supabase, authUserId);
+  const {
+    posts: dbPosts,
+    myLikes,
+    isLikedByMe,
+    createPost: dbCreatePost,
+    toggleLike: dbToggleLike,
+  } = useSupabasePosts(supabase, authUserId);
   // Synka Supabase-posts med lokal state
   useEffect(() => {
     if (dbPosts.length > 0) {
@@ -688,8 +694,8 @@ export default function KnottzApp() {
   // New features
   const [mustHaves, setMustHaves] = useState(MOCK_MUST_HAVES);
   const [tips, setTips] = useState(MOCK_TIPS);
-  const [giveaways, setGiveaways] = useState(MOCK_GIVEAWAYS);
-  const [dadJokes, setDadJokes] = useState(MOCK_DAD_JOKES);
+  const [giveaways] = useState(MOCK_GIVEAWAYS);
+  const [dadJokes] = useState(MOCK_DAD_JOKES);
   const [showPunchline, setShowPunchline] = useState({});
   const [searchTerm, setSearchTerm] = useState("");
   const [profileTab, setProfileTab] = useState("posts"); // posts, messages, friends
@@ -713,7 +719,7 @@ export default function KnottzApp() {
     if (stored) {
       setInviteStatus({ hasInvite: true, code: stored });
     }
-  }, []);
+  }, [isAuthenticated]);
 
   useEffect(() => {
     const storedPrivacy = localStorage.getItem("knottz_privacy");
@@ -928,6 +934,7 @@ export default function KnottzApp() {
     localStorage.removeItem(pendingSignupKey);
   };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!supabase) return;
     supabase.auth.getSession().then(async ({ data }) => {
@@ -1001,9 +1008,7 @@ export default function KnottzApp() {
     }
   }, [isAuthenticated]);
 
-  useEffect(() => {
-    setMenuOpen(false);
-  }, [view]);
+  // menuOpen removed
 
   useEffect(() => {
     const storedCodes = JSON.parse(
@@ -1012,6 +1017,7 @@ export default function KnottzApp() {
     setInviteCodes(storedCodes);
   }, []);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const verifyInvite = async () => {
       if (!INVITE_REQUIRED || !inviteStatus.code) return;
@@ -1076,11 +1082,7 @@ export default function KnottzApp() {
   const baseInvites = 3;
   const earnedInvites = Math.floor(myActivityScore / 10);
   const isAdminUser = adminEmails.includes(authEmail);
-  const invitesAvailable = isAdminUser
-    ? Infinity
-    : inviteVerified
-      ? baseInvites + earnedInvites
-      : 0;
+  const invitesAvailable = isAdminUser ? Infinity : baseInvites + earnedInvites;
 
   // Hantera like/unlike
   const toggleLike = async (postId) => {
