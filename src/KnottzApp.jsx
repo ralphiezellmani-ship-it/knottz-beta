@@ -934,7 +934,7 @@ export default function KnottzApp() {
     localStorage.removeItem(pendingSignupKey);
   };
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(() => {
     if (!supabase) return;
     supabase.auth.getSession().then(async ({ data }) => {
@@ -993,6 +993,7 @@ export default function KnottzApp() {
     );
     return () => authListener.subscription.unsubscribe();
   }, []);
+  /* eslint-enable react-hooks/exhaustive-deps */
 
   useEffect(() => {
     if (!householdId) return;
@@ -1017,7 +1018,6 @@ export default function KnottzApp() {
     setInviteCodes(storedCodes);
   }, []);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const verifyInvite = async () => {
       if (!INVITE_REQUIRED || !inviteStatus.code) return;
@@ -1033,7 +1033,7 @@ export default function KnottzApp() {
       }
     };
     verifyInvite();
-  }, [inviteStatus.code]);
+  }, [inviteStatus.code, INVITE_REQUIRED, supabase]);
 
   const searchLower = searchTerm.trim().toLowerCase();
   const filteredPosts = posts.filter((post) => {
@@ -1583,7 +1583,6 @@ export default function KnottzApp() {
       return;
     }
 
-    // eslint-disable-next-line react-hooks/purity
     const newConv = {
       id: `conv-${Math.random().toString(36).slice(2, 8)}`,
       other_user_id: userId,
@@ -4126,7 +4125,7 @@ export default function KnottzApp() {
                           try {
                             const data = await resp.json();
                             detail = data.details || data.error || "";
-                          } catch (_e) {
+                          } catch {
                             detail = await resp.text();
                           }
                           const suffix = detail ? ` (${detail})` : "";
@@ -4139,7 +4138,7 @@ export default function KnottzApp() {
                           localStorage.setItem("knottz_invite_sent", "1");
                         }
                         setInviteEmail("");
-                      } catch (_err) {
+                      } catch {
                         setInviteSendStatus("Kunde inte skicka inbjudan.");
                       }
                     }}
