@@ -115,9 +115,9 @@ export default function KnottzApp() {
   const [messages, setMessages] = useState(MOCK_MESSAGES);
   const [activeConversation, setActiveConversation] = useState(null);
   const [newMessage, setNewMessage] = useState("");
-  const [editingProfile, setEditingProfile] = useState(false);
   const [savedPosts] = useState(MOCK_SAVED_POSTS);
   const [showQuickStart, setShowQuickStart] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
   const [showTour, setShowTour] = useState(false);
   const [mustHaveVotes, setMustHaveVotes] = useState({});
   const [tipVotes, setTipVotes] = useState({});
@@ -373,6 +373,7 @@ export default function KnottzApp() {
     if (!onboarded) {
       setView("profile");
       setShowQuickStart(true);
+      setShowProfileModal(true);
     }
   }, [isAuthenticated]);
 
@@ -635,7 +636,7 @@ export default function KnottzApp() {
       stepId === "children"
     ) {
       setView("profile");
-      setEditingProfile(true);
+      setShowProfileModal(true);
       return;
     }
     if (stepId === "friend") {
@@ -821,17 +822,17 @@ export default function KnottzApp() {
         @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=DM+Serif+Display:ital@0;1&display=swap');
 
         :root {
-          --bg: #ffffff;
-          --bg-strong: #f5f5f5;
+          --bg: #fbfaff;
+          --bg-strong: #f4f1fb;
           --card: #ffffff;
           --ink: #111111;
           --muted: #666666;
           --accent: #111111;
           --accent-strong: #000000;
-          --accent-soft: #f3f3f3;
+          --accent-soft: #f2effa;
           --accent-gold: #d7b56d;
           --accent-mint: #8fc7b3;
-          --border: #e5e5e5;
+          --border: #ebe7f4;
           --shadow: 0 10px 28px rgba(0, 0, 0, 0.06);
           --shadow-soft: 0 4px 14px rgba(0, 0, 0, 0.05);
           --radius-lg: 18px;
@@ -844,7 +845,7 @@ export default function KnottzApp() {
 
         .app {
           font-family: 'Manrope', -apple-system, BlinkMacSystemFont, sans-serif;
-          background: var(--bg);
+          background: linear-gradient(180deg, #fbfaff 0%, #ffffff 360px);
           min-height: 100vh;
           color: var(--ink);
         }
@@ -926,11 +927,12 @@ export default function KnottzApp() {
         .menu-item:hover { background: #f9fafb; }
 
         .app-nav {
-          background: #ffffff;
+          background: rgba(255,255,255,0.9);
           border-bottom: 1px solid var(--border);
           position: sticky;
           top: 74px;
           z-index: 99;
+          backdrop-filter: blur(10px);
         }
 
         .app-nav-inner {
@@ -991,6 +993,7 @@ export default function KnottzApp() {
           border-radius: var(--radius-lg);
           padding: 1.5rem;
           box-shadow: var(--shadow-soft);
+          border: 1px solid var(--border);
         }
 
         .section {
@@ -1212,11 +1215,12 @@ export default function KnottzApp() {
         .modal-card {
           background: #fff;
           border-radius: 20px;
-          width: min(920px, 95vw);
+          width: min(860px, 95vw);
           max-height: 90vh;
           overflow: auto;
           padding: 1.5rem;
           box-shadow: var(--shadow);
+          border: 1px solid var(--border);
         }
 
         @media (max-width: 900px) {
@@ -1428,6 +1432,18 @@ export default function KnottzApp() {
             onOpenProfile={openUserProfile}
             onOpenStats={() => setScbPanel(true)}
             onAddFriend={addManualFriend}
+            onShareInvite={() => {
+              const shareUrl = `${window.location.origin}?mode=signup`;
+              if (navigator.share) {
+                navigator.share({
+                  title: "Knottz",
+                  text: "Skapa din lista över vänner som väntar barn.",
+                  url: shareUrl,
+                });
+              } else {
+                window.location.href = `mailto:?subject=Knottz&body=Skapa din lista här: ${shareUrl}`;
+              }
+            }}
           />
         )}
         {view === "groups" && (
@@ -1764,20 +1780,20 @@ export default function KnottzApp() {
                   </div>
                 </div>
 
-                <div style={{ display: "flex", gap: "0.5rem" }}>
-                  <button
-                    onClick={() => setEditingProfile(!editingProfile)}
-                    className="btn btn-primary"
-                  >
-                    <Edit size={18} /> Redigera profil
-                  </button>
-                  <button
-                    className="btn btn-soft"
-                    onClick={() => setView("settings")}
-                  >
-                    <Settings size={18} /> Inställningar
-                  </button>
-                </div>
+              <div style={{ display: "flex", gap: "0.5rem" }}>
+                <button
+                  onClick={() => setShowProfileModal(true)}
+                  className="btn btn-primary"
+                >
+                  <Edit size={18} /> Redigera profil
+                </button>
+                <button
+                  className="btn btn-soft"
+                  onClick={() => setView("settings")}
+                >
+                  <Settings size={18} /> Inställningar
+                </button>
+              </div>
               </div>
 
               <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
@@ -1812,10 +1828,34 @@ export default function KnottzApp() {
               </div>
             </div>
 
-            {editingProfile && (
-              <div className="section card">
-                <h3 style={{ marginBottom: "0.75rem" }}>Redigera profil</h3>
-                <div className="stack">
+            {showProfileModal && (
+              <div className="modal-overlay">
+                <div className="modal-card">
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      marginBottom: "1rem",
+                    }}
+                  >
+                    <div>
+                      <h3 style={{ marginBottom: "0.25rem" }}>
+                        Färdigställ din profil
+                      </h3>
+                      <div style={{ color: "#6c6b7a", fontSize: "0.9rem" }}>
+                        Fyll i uppgifter så sparas de direkt på din profil.
+                      </div>
+                    </div>
+                    <button
+                      className="btn btn-ghost"
+                      onClick={() => setShowProfileModal(false)}
+                    >
+                      Stäng
+                    </button>
+                  </div>
+
+                  <div className="stack">
                   <input
                     className="input"
                     placeholder="Namn"
@@ -2006,28 +2046,11 @@ export default function KnottzApp() {
                   </div>
                   <button
                     className="btn btn-primary"
-                    onClick={async () => {
-                      if (!supabase || !authUserId) return;
-                      await supabase
-                        .from("profiles")
-                        .update({
-                          display_name: currentUser.full_name || "",
-                          location: currentUser.location || "",
-                          bio: currentUser.bio || "",
-                          avatar_url: currentUser.avatar_url || "",
-                          personal_number: currentUser.personal_number || "",
-                          household_name: currentUser.household_name || "",
-                          expected_due_date: currentUser.due_date || null,
-                          has_children: currentUser.has_children,
-                          is_private: profilePrivacy === "private",
-                        })
-                        .eq("user_id", authUserId);
-                      loadProfiles();
-                      setEditingProfile(false);
-                    }}
+                    onClick={handleProfileSave}
                   >
                     Spara
                   </button>
+                </div>
                 </div>
               </div>
             )}
@@ -2047,8 +2070,8 @@ export default function KnottzApp() {
                       Kom igång på 60 sek
                     </h3>
                     <div style={{ color: "#6c6b7a" }}>
-                      Du är {onboardingProgress}% klar. När du når 100% får du
-                      en extra inbjudan.
+                      Du är {onboardingProgress}% klar. När du når 100% är din
+                      profil klar.
                     </div>
                   </div>
                   <button
@@ -2985,3 +3008,25 @@ export default function KnottzApp() {
     </div>
   );
 }
+  const handleProfileSave = async () => {
+    if (!supabase || !authUserId) return;
+    await supabase
+      .from("profiles")
+      .update({
+        display_name: currentUser.full_name || "",
+        location: currentUser.location || "",
+        bio: currentUser.bio || "",
+        avatar_url: currentUser.avatar_url || "",
+        personal_number: currentUser.personal_number || "",
+        household_name: currentUser.household_name || "",
+        expected_due_date: currentUser.due_date || null,
+        has_children: currentUser.has_children,
+        is_private: profilePrivacy === "private",
+      })
+      .eq("user_id", authUserId);
+    loadProfiles();
+    setShowProfileModal(false);
+    setShowQuickStart(false);
+    localStorage.setItem("knottz_onboarded", "1");
+    setView("list");
+  };

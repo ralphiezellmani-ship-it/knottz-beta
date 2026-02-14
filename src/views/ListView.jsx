@@ -19,6 +19,7 @@ const ListView = ({
   onOpenProfile,
   onOpenStats,
   onAddFriend,
+  onShareInvite,
 }) => {
   const [manualName, setManualName] = useState("");
   const [manualDueDate, setManualDueDate] = useState("");
@@ -56,11 +57,18 @@ const ListView = ({
       <div className="card card-strong" style={{ marginBottom: "1.5rem" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div style={{ fontWeight: 700, fontSize: "1.2rem" }}>Din lista</div>
-          {onOpenStats && (
-            <button className="btn btn-soft" onClick={onOpenStats}>
-              SCB‑statistik
-            </button>
-          )}
+          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+            {onShareInvite && (
+              <button className="btn btn-primary" onClick={onShareInvite}>
+                Bjud in vän
+              </button>
+            )}
+            {onOpenStats && (
+              <button className="btn btn-soft" onClick={onOpenStats}>
+                SCB‑statistik
+              </button>
+            )}
+          </div>
         </div>
         <div style={{ color: "#6c6b7a", marginTop: "0.25rem" }}>
           En enkel översikt över vänner som väntar barn och födelsedagar.
