@@ -140,8 +140,14 @@ const ListView = ({
       <div className="card">
         <div className="stack">
           {filtered.length === 0 && (
-            <div style={{ color: "#6c6b7a" }}>
-              Ingen match just nu. Prova ett annat filter.
+            <div className="card card-dashed">
+              <div style={{ fontWeight: 700, marginBottom: "0.35rem" }}>
+                Listan är tom ännu
+              </div>
+              <div style={{ color: "#6c6b7a" }}>
+                Lägg till en vän manuellt eller bjud in någon – så fylls listan
+                automatiskt när de registrerar sig.
+              </div>
             </div>
           )}
           {filtered.map((entry) => (

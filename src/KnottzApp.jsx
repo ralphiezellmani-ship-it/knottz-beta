@@ -1298,8 +1298,7 @@ export default function KnottzApp() {
           <div className="app-nav-inner">
             {[
               { id: "list", label: "Lista" },
-              { id: "musthaves", label: "Must Haves" },
-              { id: "tips", label: "Tips" },
+              { id: "inspiration", label: "Inspiration" },
             ].map(({ id, label }) => (
               <button
                 key={id}
@@ -1445,6 +1444,58 @@ export default function KnottzApp() {
               }
             }}
           />
+        )}
+        {view === "inspiration" && (
+          <div className="section fade-in">
+            <div className="section">
+              <h2 className="section-title">Inspiration</h2>
+              <div className="section-subtitle">
+                Topplistor och tips som gör vardagen enklare.
+              </div>
+            </div>
+
+            <div className="grid-2">
+              <div className="card card-strong">
+                <div className="card-head">
+                  <div className="mini-title">Must Haves</div>
+                  <button className="btn btn-soft" onClick={() => setView("musthaves")}>
+                    Se alla
+                  </button>
+                </div>
+                <div className="stack">
+                  {trendingMustHaves.map((item) => (
+                    <div key={item.id} className="mini-row">
+                      <div>
+                        <div className="mini-title">{item.title}</div>
+                        <div className="mini-sub">{item.category}</div>
+                      </div>
+                      <span className="chip">{item.upvotes + item.verified_count} röster</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="card card-strong">
+                <div className="card-head">
+                  <div className="mini-title">Tips & tricks</div>
+                  <button className="btn btn-soft" onClick={() => setView("tips")}>
+                    Se alla
+                  </button>
+                </div>
+                <div className="stack">
+                  {trendingTips.map((tip) => (
+                    <div key={tip.id} className="mini-row">
+                      <div>
+                        <div className="mini-title">{tip.title}</div>
+                        <div className="mini-sub">{tip.category}</div>
+                      </div>
+                      <span className="chip">{tip.upvotes + tip.helpful_count} röster</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
         )}
         {view === "groups" && (
           <div>
@@ -1722,28 +1773,30 @@ export default function KnottzApp() {
                 style={{
                   display: "flex",
                   justifyContent: "space-between",
-                  alignItems: "start",
-                  marginBottom: "1.5rem",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: "1rem",
+                  marginBottom: "1rem",
                 }}
               >
                 <div
                   style={{
                     display: "flex",
-                    gap: "1.5rem",
+                    gap: "1rem",
                     alignItems: "center",
                   }}
                 >
                   <div style={{ position: "relative" }}>
-                    {renderAvatar(currentUser, 72)}
+                    {renderAvatar(currentUser, 56)}
                     <label
                       style={{
                         position: "absolute",
-                        bottom: -6,
-                        right: -6,
+                        bottom: -4,
+                        right: -4,
                         background: "#fff",
                         border: "1px solid var(--border)",
                         borderRadius: "999px",
-                        padding: "0.35rem",
+                        padding: "0.25rem",
                         cursor: "pointer",
                         boxShadow: "var(--shadow-soft)",
                       }}
@@ -1758,25 +1811,17 @@ export default function KnottzApp() {
                     </label>
                   </div>
                   <div>
-                    <h2 style={{ fontSize: "2rem", marginBottom: "0.25rem" }}>
+                    <h2 style={{ fontSize: "1.6rem", marginBottom: "0.15rem" }}>
                       {currentUser.full_name || "Din profil"}
                     </h2>
-                    <div style={{ color: "#6c6b7a", fontSize: "1.1rem" }}>
+                    <div style={{ color: "#6c6b7a", fontSize: "0.95rem" }}>
                       @{currentUser.username || "knottz"}
                     </div>
-                    <div
-                      style={{
-                        marginTop: "0.5rem",
-                        padding: "0.4rem 1rem",
-                        background: "#f0edff",
-                        color: "#7b6df0",
-                        borderRadius: "20px",
-                        display: "inline-block",
-                        fontWeight: 600,
-                      }}
-                    >
-                      Vecka {currentUser.current_week} av 40
-                    </div>
+                    {currentUser.current_week ? (
+                      <span className="pill" style={{ marginTop: "0.5rem" }}>
+                        Vecka {currentUser.current_week} av 40
+                      </span>
+                    ) : null}
                   </div>
                 </div>
 
