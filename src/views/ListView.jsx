@@ -24,6 +24,7 @@ const ListView = ({
   const [manualName, setManualName] = useState("");
   const [manualDueDate, setManualDueDate] = useState("");
   const [manualBirthday, setManualBirthday] = useState("");
+  const [showAdd, setShowAdd] = useState(false);
   const entries = users.flatMap((user) => {
     const rows = [];
     if (user?.due_date) {
@@ -52,12 +53,39 @@ const ListView = ({
     return entry.type === listFilter;
   });
 
+  const sorted = [...filtered].sort((a, b) => {
+    const aDate = new Date(a.date || 0).getTime();
+    const bDate = new Date(b.date || 0).getTime();
+    return aDate - bDate;
+  });
+
+  const grouped = sorted.reduce((acc, entry) => {
+    const label = entry.date
+      ? new Date(entry.date).toLocaleDateString("sv-SE", {
+          month: "long",
+          year: "numeric",
+        })
+      : "Okänt datum";
+    if (!acc[label]) acc[label] = [];
+    acc[label].push(entry);
+    return acc;
+  }, {});
+
   return (
     <div className="section fade-in">
       <div className="card card-strong" style={{ marginBottom: "1.5rem" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div style={{ fontWeight: 700, fontSize: "1.2rem" }}>Din lista</div>
           <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+            {onAddFriend && (
+              <button
+                className="btn btn-soft"
+                onClick={() => setShowAdd(true)}
+                aria-label="Lägg till vän"
+              >
+                +
+              </button>
+            )}
             {onShareInvite && (
               <button className="btn btn-primary" onClick={onShareInvite}>
                 Bjud in vän
@@ -86,60 +114,9 @@ const ListView = ({
         </div>
       </div>
 
-      <div className="card" style={{ marginBottom: "1.5rem" }}>
-        <div style={{ fontWeight: 700, marginBottom: "0.5rem" }}>
-          Lägg till en vän manuellt
-        </div>
-        <div style={{ color: "#6c6b7a", marginBottom: "0.75rem" }}>
-          Lägg in vänner som ännu inte har Knottz – så får du koll på BF och
-          födelsedagar direkt.
-        </div>
-        <div className="stack">
-          <input
-            className="input"
-            placeholder="Namn"
-            value={manualName}
-            onChange={(e) => setManualName(e.target.value)}
-          />
-          <div className="grid-2">
-            <input
-              className="input"
-              type="date"
-              value={manualDueDate}
-              onChange={(e) => setManualDueDate(e.target.value)}
-              placeholder="BF"
-            />
-            <input
-              className="input"
-              type="date"
-              value={manualBirthday}
-              onChange={(e) => setManualBirthday(e.target.value)}
-              placeholder="Födelsedag"
-            />
-          </div>
-          <button
-            className="btn btn-primary"
-            disabled={!manualName.trim()}
-            onClick={() => {
-              if (!manualName.trim()) return;
-              onAddFriend?.({
-                name: manualName.trim(),
-                dueDate: manualDueDate,
-                birthday: manualBirthday,
-              });
-              setManualName("");
-              setManualDueDate("");
-              setManualBirthday("");
-            }}
-          >
-            Lägg till vän
-          </button>
-        </div>
-      </div>
-
       <div className="card">
         <div className="stack">
-          {filtered.length === 0 && (
+          {sorted.length === 0 && (
             <div className="card card-dashed">
               <div style={{ fontWeight: 700, marginBottom: "0.35rem" }}>
                 Listan är tom ännu
@@ -150,25 +127,90 @@ const ListView = ({
               </div>
             </div>
           )}
-          {filtered.map((entry) => (
-            <div key={entry.id} className="list-row">
-              <div
-                className="list-user"
-                onClick={() => onOpenProfile(entry.user.id)}
-              >
-                {renderAvatar(entry.user, 36)}
-                <div>
-                  <div className="list-name">{entry.user.full_name}</div>
-                  <div className="list-sub">
-                    {entry.label} {formatDate(entry.date)}
+          {Object.keys(grouped).map((month) => (
+            <div key={month} className="stack">
+              <div style={{ fontWeight: 700, color: "#6c6b7a" }}>{month}</div>
+              {grouped[month].map((entry) => (
+                <div key={entry.id} className="list-row">
+                  <div
+                    className="list-user"
+                    onClick={() => onOpenProfile(entry.user.id)}
+                  >
+                    {renderAvatar(entry.user, 36)}
+                    <div>
+                      <div className="list-name">{entry.user.full_name}</div>
+                      <div className="list-sub">
+                        {entry.label} {formatDate(entry.date)}
+                      </div>
+                    </div>
                   </div>
+                  <span className="chip">{entry.type}</span>
                 </div>
-              </div>
-              <span className="chip">{entry.type}</span>
+              ))}
             </div>
           ))}
         </div>
       </div>
+
+      {showAdd && (
+        <div className="modal-overlay" onClick={() => setShowAdd(false)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            <div style={{ fontWeight: 700, marginBottom: "0.5rem" }}>
+              Lägg till vän
+            </div>
+            <div className="stack">
+              <input
+                className="input"
+                placeholder="Namn"
+                value={manualName}
+                onChange={(e) => setManualName(e.target.value)}
+              />
+              <div className="grid-2">
+                <input
+                  className="input"
+                  type="date"
+                  value={manualDueDate}
+                  onChange={(e) => setManualDueDate(e.target.value)}
+                  placeholder="BF"
+                />
+                <input
+                  className="input"
+                  type="date"
+                  value={manualBirthday}
+                  onChange={(e) => setManualBirthday(e.target.value)}
+                  placeholder="Födelsedag"
+                />
+              </div>
+              <div style={{ display: "flex", gap: "0.5rem" }}>
+                <button
+                  className="btn btn-soft"
+                  onClick={() => setShowAdd(false)}
+                >
+                  Avbryt
+                </button>
+                <button
+                  className="btn btn-primary"
+                  disabled={!manualName.trim()}
+                  onClick={() => {
+                    if (!manualName.trim()) return;
+                    onAddFriend?.({
+                      name: manualName.trim(),
+                      dueDate: manualDueDate,
+                      birthday: manualBirthday,
+                    });
+                    setManualName("");
+                    setManualDueDate("");
+                    setManualBirthday("");
+                    setShowAdd(false);
+                  }}
+                >
+                  Spara
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
