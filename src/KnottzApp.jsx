@@ -118,6 +118,12 @@ export default function KnottzApp() {
   const [savedPosts] = useState(MOCK_SAVED_POSTS);
   const [showQuickStart, setShowQuickStart] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [toastMessage, setToastMessage] = useState("");
+  useEffect(() => {
+    if (!toastMessage) return;
+    const timer = setTimeout(() => setToastMessage(""), 2200);
+    return () => clearTimeout(timer);
+  }, [toastMessage]);
   const [showTour, setShowTour] = useState(false);
   const [mustHaveVotes, setMustHaveVotes] = useState({});
   const [tipVotes, setTipVotes] = useState({});
@@ -869,6 +875,7 @@ export default function KnottzApp() {
     setShowQuickStart(false);
     localStorage.setItem("knottz_onboarded", "1");
     setView("list");
+    setToastMessage("Profilen är sparad.");
   };
 
   return (
@@ -1278,6 +1285,20 @@ export default function KnottzApp() {
           border: 1px solid var(--border);
         }
 
+        .toast {
+          position: fixed;
+          bottom: 24px;
+          right: 24px;
+          background: #111;
+          color: #fff;
+          padding: 0.75rem 1rem;
+          border-radius: 12px;
+          box-shadow: var(--shadow);
+          font-weight: 600;
+          z-index: 999;
+          animation: fadeInUp 0.25s ease both;
+        }
+
         @media (max-width: 900px) {
           .app-main { max-width: 100%; }
           .messages-layout { grid-template-columns: 1fr; height: auto; }
@@ -1294,6 +1315,7 @@ export default function KnottzApp() {
           .landing-hero { padding: 1.5rem; }
         }
       `}</style>
+      {toastMessage && <div className="toast">{toastMessage}</div>}
       {/* Header */}
       <header className="app-header">
         <div className="app-header-inner">
