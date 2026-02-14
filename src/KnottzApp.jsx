@@ -2271,196 +2271,104 @@ export default function KnottzApp() {
               </div>
             )}
 
-            <div className="section subnav">
-              {[
-                { id: "posts", label: "Mina inlägg" },
-                { id: "messages", label: "Meddelanden" },
-                { id: "friends", label: "Kompisar" },
-              ].map((tab) => (
-                <button
-                  key={tab.id}
-                  className={`btn ${profileTab === tab.id ? "btn-primary" : "btn-soft"}`}
-                  onClick={() => setProfileTab(tab.id)}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-
-            {profileTab === "posts" && (
-              <div className="section card">
-                <h3 style={{ marginBottom: "0.75rem" }}>Mina inlägg</h3>
+            <div className="section grid-2">
+              <div className="card">
+                <h3 style={{ marginBottom: "0.75rem" }}>Mina favoriter</h3>
                 <div className="stack">
-                  {posts.filter((p) => p.user_id === currentUser.id).length ===
-                  0 ? (
-                    <div style={{ color: "#6c6b7a" }}>
-                      Du har inte gjort några inlägg än.
-                    </div>
-                  ) : (
-                    posts
-                      .filter((p) => p.user_id === currentUser.id)
-                      .map((post) => (
-                        <div
-                          key={post.id}
-                          className="card"
-                          style={{
-                            boxShadow: "none",
-                            border: "1px solid var(--border)",
-                          }}
-                        >
-                          <div
-                            style={{
-                              fontSize: "0.85rem",
-                              color: "#6c6b7a",
-                              marginBottom: "0.5rem",
-                            }}
-                          >
-                            {formatTime(post.created_at)}
-                          </div>
-                          <span
-                            className="pill"
-                            style={{ marginBottom: "0.5rem" }}
-                          >
-                            {post.visibility === "private"
-                              ? "Privat"
-                              : "Offentligt"}
-                          </span>
-                          <p style={{ lineHeight: 1.6 }}>{post.content}</p>
+                  {mustHaves
+                    .filter((item) => mustHaveVotes[item.id])
+                    .slice(0, 4)
+                    .map((item) => (
+                      <div key={item.id} className="mini-row">
+                        <div>
+                          <div className="mini-title">{item.title}</div>
+                          <div className="mini-sub">{item.category}</div>
                         </div>
-                      ))
-                  )}
+                        <span className="chip">Must have</span>
+                      </div>
+                    ))}
+                  {tips
+                    .filter((tip) => tipVotes[tip.id])
+                    .slice(0, 4)
+                    .map((tip) => (
+                      <div key={tip.id} className="mini-row">
+                        <div>
+                          <div className="mini-title">{tip.title}</div>
+                          <div className="mini-sub">{tip.category}</div>
+                        </div>
+                        <span className="chip">Tips</span>
+                      </div>
+                    ))}
+                  {Object.keys(mustHaveVotes).length === 0 &&
+                    Object.keys(tipVotes).length === 0 && (
+                      <div style={{ color: "#6c6b7a" }}>
+                        När du sparar favoriter dyker de upp här.
+                      </div>
+                    )}
                 </div>
               </div>
-            )}
 
-            <div className="section card">
-              <h3 style={{ marginBottom: "0.75rem" }}>Mina grupper</h3>
-              <div className="stack">
-                {groups
-                  .filter((g) => g.is_member)
-                  .map((group) => (
-                    <div
-                      key={group.id}
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: "0.75rem",
-                          alignItems: "center",
-                        }}
-                      >
-                        <div style={{ fontSize: "1.8rem" }}>{group.icon}</div>
-                        <div>
-                          <div style={{ fontWeight: 700 }}>{group.name}</div>
-                          <div
-                            style={{ fontSize: "0.85rem", color: "#6c6b7a" }}
-                          >
-                            {group.members} medlemmar
-                          </div>
-                        </div>
+              <div className="card">
+                <h3 style={{ marginBottom: "0.75rem" }}>Nästa i listan</h3>
+                {(() => {
+                  const entries = users.flatMap((user) => {
+                    const rows = [];
+                    if (user?.due_date) {
+                      rows.push({
+                        id: `${user.id}-due`,
+                        label: "BF",
+                        date: user.due_date,
+                        user,
+                      });
+                    }
+                    if (user?.child_birthdate) {
+                      rows.push({
+                        id: `${user.id}-birthday`,
+                        label: "Födelsedag",
+                        date: user.child_birthdate,
+                        user,
+                      });
+                    }
+                    return rows;
+                  });
+                  const next = entries
+                    .filter((entry) => entry.date)
+                    .sort(
+                      (a, b) =>
+                        new Date(a.date).getTime() - new Date(b.date).getTime(),
+                    )
+                    .slice(0, 4);
+                  if (next.length === 0) {
+                    return (
+                      <div style={{ color: "#6c6b7a" }}>
+                        Lägg till dina första datum i listan.
                       </div>
-                      {group.new_posts > 0 && (
-                        <span className="chip">Nytt · {group.new_posts}</span>
-                      )}
-                    </div>
-                  ))}
-              </div>
-            </div>
-
-            <div className="section card">
-              <h3 style={{ marginBottom: "0.75rem" }}>Hitta fler grupper</h3>
-              <div className="stack">
-                {groups
-                  .filter((g) => !g.is_member)
-                  .slice(0, 4)
-                  .map((group) => (
-                    <div
-                      key={group.id}
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: "0.75rem",
-                          alignItems: "center",
-                        }}
-                      >
-                        <div style={{ fontSize: "1.8rem" }}>{group.icon}</div>
-                        <div>
-                          <div style={{ fontWeight: 700 }}>{group.name}</div>
-                          <div
-                            style={{ fontSize: "0.85rem", color: "#6c6b7a" }}
+                    );
+                  }
+                  return (
+                    <div className="stack">
+                      {next.map((entry) => (
+                        <div key={entry.id} className="mini-row">
+                          <div>
+                            <div className="mini-title">
+                              {entry.user.full_name}
+                            </div>
+                            <div className="mini-sub">
+                              {entry.label}{" "}
+                              {new Date(entry.date).toLocaleDateString("sv-SE")}
+                            </div>
+                          </div>
+                          <button
+                            className="btn btn-soft"
+                            onClick={() => openUserProfile(entry.user.id)}
                           >
-                            {group.members} medlemmar
-                          </div>
+                            Visa
+                          </button>
                         </div>
-                      </div>
-                      <button
-                        className="btn btn-outline"
-                        disabled={!canInteract}
-                        onClick={() => toggleGroupMembership(group.id)}
-                      >
-                        Gå med
-                      </button>
+                      ))}
                     </div>
-                  ))}
-              </div>
-            </div>
-
-            <div className="section card">
-              <h3 style={{ marginBottom: "0.75rem" }}>
-                Vänner som väntar barn
-              </h3>
-              <div className="stack">
-                {users
-                  .filter((u) => following.includes(u.id))
-                  .map((user) => (
-                    <div
-                      key={user.id}
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: "0.75rem",
-                          alignItems: "center",
-                          cursor: "pointer",
-                        }}
-                        onClick={() => openUserProfile(user.id)}
-                      >
-                        {renderAvatar(user, 32)}
-                        <div>
-                          <div style={{ fontWeight: 700 }}>
-                            {user.full_name}
-                          </div>
-                          <div
-                            style={{ fontSize: "0.85rem", color: "#6c6b7a" }}
-                          >
-                            BF{" "}
-                            {new Date(user.due_date).toLocaleDateString(
-                              "sv-SE",
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                      {user.is_new_pregnancy && (
-                        <span className="chip">Ny BF</span>
-                      )}
-                    </div>
-                  ))}
+                  );
+                })()}
               </div>
             </div>
 
@@ -2922,26 +2830,27 @@ export default function KnottzApp() {
         )}
 
         {view === "user" && (
-          <div className="section fade-in">
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: "1rem",
-              }}
-            >
-              <h2 className="section-title">Profil</h2>
-              <button className="btn btn-ghost" onClick={backToPrevious}>
-                Tillbaka
-              </button>
-            </div>
-            {(() => {
-              const user = users.find((u) => u.id === detailId);
-              if (!user) return <div>Profilen hittades inte.</div>;
-              return (
-                <div className="stack">
-                  <div className="card">
+          <div className="modal-overlay" onClick={backToPrevious}>
+            <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+              {(() => {
+                const user = users.find((u) => u.id === detailId);
+                if (!user) return <div>Profilen hittades inte.</div>;
+                return (
+                  <div className="stack">
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                      }}
+                    >
+                      <div style={{ fontWeight: 800, fontSize: "1.3rem" }}>
+                        {user.full_name}
+                      </div>
+                      <button className="btn btn-ghost" onClick={backToPrevious}>
+                        Stäng
+                      </button>
+                    </div>
                     <div
                       style={{
                         display: "flex",
@@ -2951,69 +2860,46 @@ export default function KnottzApp() {
                     >
                       {renderAvatar(user, 64)}
                       <div>
-                        <div style={{ fontWeight: 800, fontSize: "1.3rem" }}>
-                          {user.full_name}
-                        </div>
                         <div style={{ color: "#6c6b7a" }}>@{user.username}</div>
-                        <div className="chip" style={{ marginTop: "0.5rem" }}>
-                          BF{" "}
-                          {new Date(user.due_date).toLocaleDateString("sv-SE")}
-                        </div>
-                      </div>
-                      <div
-                        style={{
-                          marginLeft: "auto",
-                          display: "flex",
-                          gap: "0.5rem",
-                        }}
-                      >
-                        <button
-                          className="btn btn-outline"
-                          onClick={() => toggleFollow(user.id)}
-                        >
-                          {following.includes(user.id) ? "Följer" : "Följ"}
-                        </button>
-                        <button
-                          className="btn btn-soft"
-                          onClick={() => startConversation(user.id)}
-                        >
-                          Meddela
-                        </button>
-                      </div>
-                    </div>
-                    <p style={{ marginTop: "1rem" }}>{user.bio}</p>
-                  </div>
-                  <div className="card">
-                    <h3 style={{ marginBottom: "0.75rem" }}>Inlägg</h3>
-                    <div className="stack">
-                      {posts
-                        .filter((p) => p.user_id === user.id)
-                        .map((post) => (
-                          <div
-                            key={post.id}
-                            className="card"
-                            style={{
-                              boxShadow: "none",
-                              border: "1px solid var(--border)",
-                            }}
-                          >
-                            <div
-                              style={{
-                                fontSize: "0.85rem",
-                                color: "#6c6b7a",
-                                marginBottom: "0.5rem",
-                              }}
-                            >
-                              {formatTime(post.created_at)}
-                            </div>
-                            <p>{post.content}</p>
+                        {user.due_date && (
+                          <div className="chip" style={{ marginTop: "0.5rem" }}>
+                            BF{" "}
+                            {new Date(user.due_date).toLocaleDateString(
+                              "sv-SE",
+                            )}
                           </div>
-                        ))}
+                        )}
+                      </div>
+                    </div>
+                    {user.bio && <p style={{ marginTop: "0.5rem" }}>{user.bio}</p>}
+                    <div className="subnav" style={{ marginTop: "0.5rem" }}>
+                      <button
+                        className="btn btn-outline"
+                        onClick={() => toggleFollow(user.id)}
+                      >
+                        {following.includes(user.id) ? "Följer" : "Följ"}
+                      </button>
+                      <button
+                        className="btn btn-soft"
+                        onClick={() => startConversation(user.id)}
+                      >
+                        Meddela
+                      </button>
+                    </div>
+                    <div className="card card-border">
+                      <div style={{ fontWeight: 700, marginBottom: "0.5rem" }}>
+                        Skicka gåva
+                      </div>
+                      <div className="subnav">
+                        <button className="btn btn-soft">Charma</button>
+                        <button className="btn btn-soft">Presentkort</button>
+                        <button className="btn btn-soft">Blombud</button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })()}
+                );
+              })()}
+            </div>
           </div>
         )}
       </div>
