@@ -244,20 +244,28 @@ export default function KnottzApp() {
   };
 
   const loadCurrentProfile = async (userId) => {
-    if (!supabase || !userId) return;
-    const { data } = await supabase
-      .from("profiles")
-      .select(
-        "id,user_id,email,display_name,bio,avatar_url,location,expected_due_date,household_name,is_private,personal_number,has_children,household_id",
-      )
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (data) {
-      const mapped = mapProfileToUser(data);
-      setCurrentUser(mapped);
-      setProfilePrivacy(data.is_private ? "private" : "public");
-      setHouseholdId(data.household_id || null);
-      return mapped;
+    if (!userId) return;
+    if (supabase) {
+      const { data } = await supabase
+        .from("profiles")
+        .select(
+          "id,user_id,email,display_name,bio,avatar_url,location,expected_due_date,household_name,is_private,personal_number,has_children,household_id",
+        )
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (data) {
+        const mapped = mapProfileToUser(data);
+        setCurrentUser(mapped);
+        setProfilePrivacy(data.is_private ? "private" : "public");
+        setHouseholdId(data.household_id || null);
+        return mapped;
+      }
+    }
+    const cached = localStorage.getItem(`knottz_profile_cache_${userId}`);
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      setCurrentUser(parsed);
+      return parsed;
     }
   };
 
@@ -814,6 +822,53 @@ export default function KnottzApp() {
   // Toggle punchline visibility
   const togglePunchline = (id) => {
     setShowPunchline({ ...showPunchline, [id]: !showPunchline[id] });
+  };
+
+  const handleProfileSave = async () => {
+    if (!authUserId) return;
+    const payload = {
+      user_id: authUserId,
+      display_name: currentUser.full_name || "",
+      location: currentUser.location || "",
+      bio: currentUser.bio || "",
+      avatar_url: currentUser.avatar_url || "",
+      personal_number: currentUser.personal_number || "",
+      household_name: currentUser.household_name || "",
+      expected_due_date: currentUser.due_date || null,
+      has_children: currentUser.has_children,
+      is_private: profilePrivacy === "private",
+    };
+    if (supabase) {
+      await supabase
+        .from("profiles")
+        .upsert(payload, { onConflict: "user_id" });
+    }
+
+    const cached = {
+      ...currentUser,
+      full_name: payload.display_name,
+      location: payload.location,
+      bio: payload.bio,
+      avatar_url: payload.avatar_url,
+      personal_number: payload.personal_number,
+      household_name: payload.household_name,
+      due_date: payload.expected_due_date,
+      has_children: payload.has_children,
+      is_private: payload.is_private,
+    };
+    localStorage.setItem(
+      `knottz_profile_cache_${authUserId}`,
+      JSON.stringify(cached),
+    );
+    setCurrentUser(cached);
+    setUsers((prev) =>
+      prev.map((u) => (u.id === currentUser.id ? { ...u, ...cached } : u)),
+    );
+    loadProfiles();
+    setShowProfileModal(false);
+    setShowQuickStart(false);
+    localStorage.setItem("knottz_onboarded", "1");
+    setView("list");
   };
 
   return (
@@ -3053,25 +3108,3 @@ export default function KnottzApp() {
     </div>
   );
 }
-  const handleProfileSave = async () => {
-    if (!supabase || !authUserId) return;
-    await supabase
-      .from("profiles")
-      .update({
-        display_name: currentUser.full_name || "",
-        location: currentUser.location || "",
-        bio: currentUser.bio || "",
-        avatar_url: currentUser.avatar_url || "",
-        personal_number: currentUser.personal_number || "",
-        household_name: currentUser.household_name || "",
-        expected_due_date: currentUser.due_date || null,
-        has_children: currentUser.has_children,
-        is_private: profilePrivacy === "private",
-      })
-      .eq("user_id", authUserId);
-    loadProfiles();
-    setShowProfileModal(false);
-    setShowQuickStart(false);
-    localStorage.setItem("knottz_onboarded", "1");
-    setView("list");
-  };
