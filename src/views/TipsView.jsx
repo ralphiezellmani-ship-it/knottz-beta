@@ -6,6 +6,11 @@ const TipsView = ({
   tips,
   canInteract,
   toggleTipVote,
+  comments,
+  pendingComments,
+  setPendingComments,
+  onAddComment,
+  onVoteComment,
 }) => {
   if (!isAuthenticated) {
     return (
@@ -76,6 +81,57 @@ const TipsView = ({
               >
                 Hjälpte {tip.helpful_count}
               </button>
+            </div>
+            <div className="card card-border" style={{ marginTop: "0.9rem" }}>
+              <div style={{ fontWeight: 700, marginBottom: "0.5rem" }}>
+                Kommentarer
+              </div>
+              <div className="stack">
+                <div style={{ display: "flex", gap: "0.5rem" }}>
+                  <input
+                    className="input"
+                    placeholder="Skriv tips-feedback..."
+                    value={pendingComments[tip.id] || ""}
+                    onChange={(e) =>
+                      setPendingComments((prev) => ({
+                        ...prev,
+                        [tip.id]: e.target.value,
+                      }))
+                    }
+                  />
+                  <button
+                    className="btn btn-soft"
+                    disabled={!canInteract}
+                    onClick={() => onAddComment(tip.id)}
+                  >
+                    Skicka
+                  </button>
+                </div>
+                {(comments[tip.id] || []).slice(0, 4).map((comment) => (
+                  <div key={comment.id} className="mini-row">
+                    <div style={{ flex: 1 }}>
+                      <div className="mini-title">{comment.user_name}</div>
+                      <div className="mini-sub">{comment.content}</div>
+                    </div>
+                    <div style={{ display: "flex", gap: "0.4rem" }}>
+                      <button
+                        className="btn btn-soft"
+                        disabled={!canInteract}
+                        onClick={() => onVoteComment(tip.id, comment.id, "up")}
+                      >
+                        👍 {comment.upvotes || 0}
+                      </button>
+                      <button
+                        className="btn btn-soft"
+                        disabled={!canInteract}
+                        onClick={() => onVoteComment(tip.id, comment.id, "down")}
+                      >
+                        👎 {comment.downvotes || 0}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         ))}

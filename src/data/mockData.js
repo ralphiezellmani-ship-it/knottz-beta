@@ -431,3 +431,30 @@ export const MONTH_GUIDE = [
   { month: "November", summary: "Skorpionen: intensitet och styrka." },
   { month: "December", summary: "Skytten: nyfikenhet och optimism." },
 ];
+
+export const MOCK_CELEB_PREGNANCIES = [
+  {
+    id: "ce1",
+    name: "Kandis A",
+    status: "Bekraftad",
+    due_window: "Hosten 2026",
+    source: "Offentlig intervju",
+    updated_at: "2026-02-10",
+  },
+  {
+    id: "ce2",
+    name: "Kandis B",
+    status: "Bekraftad",
+    due_window: "Sommaren 2026",
+    source: "Sociala medier",
+    updated_at: "2026-02-08",
+  },
+  {
+    id: "ce3",
+    name: "Kandis C",
+    status: "Rykte",
+    due_window: "Okant",
+    source: "Tips fran anvandare",
+    updated_at: "2026-02-07",
+  },
+];

@@ -13,6 +13,7 @@ const formatDate = (value) => {
 
 const ListView = ({
   users,
+  friendNotes,
   listFilter,
   setListFilter,
   renderAvatar,
@@ -24,6 +25,8 @@ const ListView = ({
   const [manualName, setManualName] = useState("");
   const [manualDueDate, setManualDueDate] = useState("");
   const [manualBirthday, setManualBirthday] = useState("");
+  const [manualWish, setManualWish] = useState("");
+  const [manualFavorite, setManualFavorite] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const entries = users.flatMap((user) => {
     const rows = [];
@@ -142,6 +145,17 @@ const ListView = ({
                       <div className="list-sub">
                         {entry.label} {formatDate(entry.date)}
                       </div>
+                      {(friendNotes?.[entry.user.id]?.wish ||
+                        friendNotes?.[entry.user.id]?.favorite) && (
+                        <div
+                          className="list-sub"
+                          style={{ marginTop: "0.1rem", fontSize: "0.78rem" }}
+                        >
+                          {friendNotes?.[entry.user.id]?.wish
+                            ? `Önskar: ${friendNotes[entry.user.id].wish}`
+                            : `Favorit: ${friendNotes[entry.user.id].favorite}`}
+                        </div>
+                      )}
                     </div>
                   </div>
                   <span className="chip">{entry.type}</span>
@@ -181,6 +195,18 @@ const ListView = ({
                   placeholder="Födelsedag"
                 />
               </div>
+              <input
+                className="input"
+                placeholder="Önskelista (valfritt)"
+                value={manualWish}
+                onChange={(e) => setManualWish(e.target.value)}
+              />
+              <input
+                className="input"
+                placeholder="Favoritgodis/favorit (valfritt)"
+                value={manualFavorite}
+                onChange={(e) => setManualFavorite(e.target.value)}
+              />
               <div style={{ display: "flex", gap: "0.5rem" }}>
                 <button
                   className="btn btn-soft"
@@ -197,10 +223,14 @@ const ListView = ({
                       name: manualName.trim(),
                       dueDate: manualDueDate,
                       birthday: manualBirthday,
+                      wishNote: manualWish,
+                      favoriteTreat: manualFavorite,
                     });
                     setManualName("");
                     setManualDueDate("");
                     setManualBirthday("");
+                    setManualWish("");
+                    setManualFavorite("");
                     setShowAdd(false);
                   }}
                 >

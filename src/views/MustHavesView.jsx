@@ -11,6 +11,11 @@ const MustHavesView = ({
   toggleMustHaveVote,
   mustHaveRequests,
   setMustHaveRequests,
+  comments,
+  pendingComments,
+  setPendingComments,
+  onAddComment,
+  onVoteComment,
 }) => {
   if (!isAuthenticated) {
     return (
@@ -79,6 +84,15 @@ const MustHavesView = ({
                   {item.category} · {item.price_range}
                 </div>
                 <p style={{ marginTop: "0.5rem" }}>{item.description}</p>
+                {item.link && (
+                  <button
+                    className="btn btn-ghost"
+                    style={{ marginTop: "0.5rem" }}
+                    onClick={() => window.open(item.link, "_blank")}
+                  >
+                    Köp via partner
+                  </button>
+                )}
               </div>
               <div
                 style={{
@@ -102,6 +116,57 @@ const MustHavesView = ({
                 >
                   {item.verified_count} har den
                 </button>
+              </div>
+            </div>
+            <div className="card card-border" style={{ marginTop: "0.9rem" }}>
+              <div style={{ fontWeight: 700, marginBottom: "0.5rem" }}>
+                Kommentarer
+              </div>
+              <div className="stack">
+                <div style={{ display: "flex", gap: "0.5rem" }}>
+                  <input
+                    className="input"
+                    placeholder="Skriv en review..."
+                    value={pendingComments[item.id] || ""}
+                    onChange={(e) =>
+                      setPendingComments((prev) => ({
+                        ...prev,
+                        [item.id]: e.target.value,
+                      }))
+                    }
+                  />
+                  <button
+                    className="btn btn-soft"
+                    disabled={!canInteract}
+                    onClick={() => onAddComment(item.id)}
+                  >
+                    Skicka
+                  </button>
+                </div>
+                {(comments[item.id] || []).slice(0, 4).map((comment) => (
+                  <div key={comment.id} className="mini-row">
+                    <div style={{ flex: 1 }}>
+                      <div className="mini-title">{comment.user_name}</div>
+                      <div className="mini-sub">{comment.content}</div>
+                    </div>
+                    <div style={{ display: "flex", gap: "0.4rem" }}>
+                      <button
+                        className="btn btn-soft"
+                        disabled={!canInteract}
+                        onClick={() => onVoteComment(item.id, comment.id, "up")}
+                      >
+                        👍 {comment.upvotes || 0}
+                      </button>
+                      <button
+                        className="btn btn-soft"
+                        disabled={!canInteract}
+                        onClick={() => onVoteComment(item.id, comment.id, "down")}
+                      >
+                        👎 {comment.downvotes || 0}
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           </div>

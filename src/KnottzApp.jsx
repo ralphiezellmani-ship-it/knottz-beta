@@ -20,6 +20,7 @@ import LandingView from "./views/LandingView";
 import ListView from "./views/ListView";
 import MustHavesView from "./views/MustHavesView";
 import TipsView from "./views/TipsView";
+import CelebWatchView from "./views/CelebWatchView";
 import {
   MOCK_USERS,
   MOCK_GROUPS,
@@ -32,11 +33,11 @@ import {
   MOCK_POSTS,
   MOCK_CONVERSATIONS,
   MOCK_MESSAGES,
-  MOCK_COMMENTS,
   SCB_STATS,
   SCB_BIRTHS_2024_MONTHS,
   COMMUNITY_STATS,
   MONTH_GUIDE,
+  MOCK_CELEB_PREGNANCIES,
 } from "./data/mockData";
 
 
@@ -108,8 +109,6 @@ export default function KnottzApp() {
       ]);
     }
   }, [dbPosts, myLikes, isLikedByMe]);
-  const [comments, setComments] = useState(MOCK_COMMENTS);
-  const [newComment, setNewComment] = useState("");
   const [groups, setGroups] = useState(MOCK_GROUPS);
   const [conversations, setConversations] = useState(MOCK_CONVERSATIONS);
   const [messages, setMessages] = useState(MOCK_MESSAGES);
@@ -118,6 +117,7 @@ export default function KnottzApp() {
   const [savedPosts] = useState(MOCK_SAVED_POSTS);
   const [showQuickStart, setShowQuickStart] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
   useEffect(() => {
     if (!toastMessage) return;
@@ -139,6 +139,45 @@ export default function KnottzApp() {
   const [showPunchline, setShowPunchline] = useState({});
   const [profileTab, setProfileTab] = useState("posts"); // posts, messages, friends
   const [listFilter, setListFilter] = useState("Alla"); // Alla, Gravid, Födelsedagar
+  const [showGroupPicker, setShowGroupPicker] = useState(false);
+  const [groupSearch, setGroupSearch] = useState("");
+  const [newGroupName, setNewGroupName] = useState("");
+  const [newGroupDescription, setNewGroupDescription] = useState("");
+  const [friendNotes, setFriendNotes] = useState(() => {
+    if (typeof window === "undefined") return {};
+    try {
+      return JSON.parse(localStorage.getItem("knottz_friend_notes") || "{}");
+    } catch {
+      return {};
+    }
+  });
+  const [mustHaveComments, setMustHaveComments] = useState(() => {
+    if (typeof window === "undefined") return {};
+    try {
+      return JSON.parse(localStorage.getItem("knottz_musthave_comments") || "{}");
+    } catch {
+      return {};
+    }
+  });
+  const [tipComments, setTipComments] = useState(() => {
+    if (typeof window === "undefined") return {};
+    try {
+      return JSON.parse(localStorage.getItem("knottz_tip_comments") || "{}");
+    } catch {
+      return {};
+    }
+  });
+  const [pendingMustHaveComment, setPendingMustHaveComment] = useState({});
+  const [pendingTipComment, setPendingTipComment] = useState({});
+  const [celebrities, setCelebrities] = useState(MOCK_CELEB_PREGNANCIES);
+  const [celebrityRumors, setCelebrityRumors] = useState(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      return JSON.parse(localStorage.getItem("knottz_celebrity_rumors") || "[]");
+    } catch {
+      return [];
+    }
+  });
 
   // Beräkna månad från due_date
   // getDueMonth reserved for future use
@@ -164,6 +203,28 @@ export default function KnottzApp() {
   useEffect(() => {
     localStorage.setItem("knottz_privacy", profilePrivacy);
   }, [profilePrivacy]);
+
+  useEffect(() => {
+    localStorage.setItem("knottz_friend_notes", JSON.stringify(friendNotes));
+  }, [friendNotes]);
+
+  useEffect(() => {
+    localStorage.setItem(
+      "knottz_musthave_comments",
+      JSON.stringify(mustHaveComments),
+    );
+  }, [mustHaveComments]);
+
+  useEffect(() => {
+    localStorage.setItem("knottz_tip_comments", JSON.stringify(tipComments));
+  }, [tipComments]);
+
+  useEffect(() => {
+    localStorage.setItem(
+      "knottz_celebrity_rumors",
+      JSON.stringify(celebrityRumors),
+    );
+  }, [celebrityRumors]);
 
   const mapProfileToUser = (profile) => {
     const username = profile?.email ? profile.email.split("@")[0] : "knottz";
@@ -249,6 +310,134 @@ export default function KnottzApp() {
     }
   };
 
+  const loadFriendNotes = async (userId) => {
+    if (!supabase || !userId) return;
+    const { data, error } = await supabase
+      .from("friend_notes")
+      .select("target_user_id,wish,favorite")
+      .eq("user_id", userId);
+    if (error || !data) return;
+    const mapped = data.reduce((acc, row) => {
+      acc[row.target_user_id] = {
+        wish: row.wish || "",
+        favorite: row.favorite || "",
+      };
+      return acc;
+    }, {});
+    setFriendNotes(mapped);
+  };
+
+  const loadEntityComments = async (entityType) => {
+    if (!supabase) return {};
+    const { data: rows, error } = await supabase
+      .from("entity_comments")
+      .select("id,entity_type,entity_id,user_id,user_name,content,upvotes,downvotes,created_at")
+      .eq("entity_type", entityType)
+      .order("created_at", { ascending: false });
+    if (error || !rows) return {};
+
+    let myVotes = [];
+    if (authUserId) {
+      const { data: voteRows } = await supabase
+        .from("entity_comment_votes")
+        .select("comment_id,vote_type")
+        .eq("voter_id", authUserId)
+        .eq("entity_type", entityType);
+      myVotes = voteRows || [];
+    }
+    const voteMap = myVotes.reduce((acc, row) => {
+      acc[row.comment_id] = row.vote_type;
+      return acc;
+    }, {});
+
+    return rows.reduce((acc, row) => {
+      if (!acc[row.entity_id]) acc[row.entity_id] = [];
+      acc[row.entity_id].push({
+        ...row,
+        voted_by: voteMap[row.id] ? { [authUserId]: voteMap[row.id] } : {},
+      });
+      return acc;
+    }, {});
+  };
+
+  const loadCommunityGroups = async (userId) => {
+    if (!supabase || !userId) return;
+    const { data: groupsRows, error: groupsErr } = await supabase
+      .from("community_groups")
+      .select("id,name,description,icon,created_by,created_at")
+      .order("created_at", { ascending: false });
+    if (groupsErr || !groupsRows) return;
+
+    const { data: memberRows } = await supabase
+      .from("community_group_members")
+      .select("group_id,user_id");
+
+    const memberCounts = (memberRows || []).reduce((acc, row) => {
+      acc[row.group_id] = (acc[row.group_id] || 0) + 1;
+      return acc;
+    }, {});
+    const myGroupIds = new Set(
+      (memberRows || [])
+        .filter((row) => row.user_id === userId)
+        .map((row) => row.group_id),
+    );
+
+    const dbGroups = groupsRows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      description: row.description || "Community-grupp",
+      icon: row.icon || "💬",
+      members: memberCounts[row.id] || 0,
+      is_member: myGroupIds.has(row.id),
+      new_posts: 0,
+    }));
+
+    setGroups((prev) => {
+      const mock = prev.filter((group) => String(group.id).startsWith("g"));
+      return [...dbGroups, ...mock];
+    });
+  };
+
+  const loadCelebrityTips = async () => {
+    if (!supabase) return;
+    const { data, error } = await supabase
+      .from("celebrity_tips")
+      .select(
+        "id,celeb_name,details,source,status,created_by,created_at,due_window",
+      )
+      .order("created_at", { ascending: false });
+    if (error || !data) return;
+
+    const approved = data
+      .filter((row) => row.status === "approved")
+      .map((row) => ({
+        id: row.id,
+        name: row.celeb_name,
+        status: "Bekräftad",
+        due_window: row.due_window || "Okänt",
+        source: row.source || "Tips från community",
+        updated_at: new Date(row.created_at).toISOString().slice(0, 10),
+      }));
+
+    const reviewList = data
+      .filter(
+        (row) =>
+          row.status !== "approved" &&
+          (!authUserId || row.created_by === authUserId),
+      )
+      .map((row) => ({
+        id: row.id,
+        celeb_name: row.celeb_name,
+        details: row.details,
+        source: row.source,
+        status: row.status,
+        created_at: row.created_at,
+      }));
+
+    if (approved.length) setCelebrities(approved);
+    setCelebrityRumors(reviewList);
+  };
+
   const loadCurrentProfile = async (userId) => {
     if (!userId) return;
     if (supabase) {
@@ -270,6 +459,12 @@ export default function KnottzApp() {
     const cached = localStorage.getItem(`knottz_profile_cache_${userId}`);
     if (cached) {
       const parsed = JSON.parse(cached);
+      setCurrentUser(parsed);
+      return parsed;
+    }
+    const cachedLocal = localStorage.getItem("knottz_profile_cache_local");
+    if (cachedLocal) {
+      const parsed = JSON.parse(cachedLocal);
       setCurrentUser(parsed);
       return parsed;
     }
@@ -345,6 +540,13 @@ export default function KnottzApp() {
         await loadProfiles();
         await loadFollowing(session.user.id);
         await loadFollowers(session.user.id);
+        await loadFriendNotes(session.user.id);
+        await loadCommunityGroups(session.user.id);
+        await loadCelebrityTips();
+        const dbMustComments = await loadEntityComments("musthave");
+        if (Object.keys(dbMustComments).length) setMustHaveComments(dbMustComments);
+        const dbTipComments = await loadEntityComments("tip");
+        if (Object.keys(dbTipComments).length) setTipComments(dbTipComments);
         const complete = profile
           ? Boolean(profile.full_name && profile.avatar_url)
           : false;
@@ -362,6 +564,13 @@ export default function KnottzApp() {
           await loadProfiles();
           await loadFollowing(session.user.id);
           await loadFollowers(session.user.id);
+          await loadFriendNotes(session.user.id);
+          await loadCommunityGroups(session.user.id);
+          await loadCelebrityTips();
+          const dbMustComments = await loadEntityComments("musthave");
+          if (Object.keys(dbMustComments).length) setMustHaveComments(dbMustComments);
+          const dbTipComments = await loadEntityComments("tip");
+          if (Object.keys(dbTipComments).length) setTipComments(dbTipComments);
           const complete = profile
             ? Boolean(profile.full_name && profile.avatar_url)
             : false;
@@ -413,8 +622,6 @@ export default function KnottzApp() {
     .sort((a, b) => b.upvotes + b.helpful_count - (a.upvotes + a.helpful_count))
     .slice(0, 3);
 
-  const myPostsCount = posts.filter((p) => p.user_id === currentUser.id).length;
-
   // Hantera like/unlike
   const toggleLike = async (postId) => {
     await dbToggleLike(postId);
@@ -456,12 +663,16 @@ export default function KnottzApp() {
     }
   };
 
-  const addManualFriend = ({ name, dueDate, birthday }) => {
+  const addManualFriend = ({ name, dueDate, birthday, wishNote, favoriteTreat }) => {
     const entry = {
-      id: `manual-${Date.now()}`,
+      id: `manual-${createId()}`,
       full_name: name,
       due_date: dueDate || "",
       child_birthdate: birthday || "",
+      username: (name || "friend").toLowerCase().replace(/\s+/g, "_"),
+      bio: "",
+      avatar_url: "",
+      location: "",
     };
     setUsers((prev) => {
       const updated = [...prev, entry];
@@ -472,34 +683,12 @@ export default function KnottzApp() {
       );
       return updated;
     });
-  };
-
-  // Lägg till kommentar
-  const addComment = (postId) => {
-    if (!canInteract) return;
-    if (!newComment.trim()) return;
-
-    const comment = {
-      id: Date.now().toString(),
-      user_id: currentUser.id,
-      content: newComment,
-      created_at: new Date().toISOString(),
-    };
-
-    setComments({
-      ...comments,
-      [postId]: [...(comments[postId] || []), comment],
-    });
-
-    setPosts(
-      posts.map((post) =>
-        post.id === postId
-          ? { ...post, comments_count: post.comments_count + 1 }
-          : post,
-      ),
-    );
-
-    setNewComment("");
+    if (wishNote || favoriteTreat) {
+      saveFriendNote(entry.id, {
+        wish: wishNote || "",
+        favorite: favoriteTreat || "",
+      });
+    }
   };
 
   // Formatera tid
@@ -566,6 +755,8 @@ export default function KnottzApp() {
   };
 
   const canInteract = isAuthenticated;
+  const createId = () =>
+    `id-${Math.random().toString(36).slice(2, 10)}-${Math.random().toString(36).slice(2, 6)}`;
 
   const onboardingSteps = [
     { id: "name", label: "Fyll i namn", done: Boolean(currentUser.full_name) },
@@ -629,6 +820,116 @@ export default function KnottzApp() {
       };
       tempReader.readAsDataURL(file);
     }
+  };
+
+  const saveFriendNote = async (userId, patch) => {
+    const nextPayload = {
+      ...(friendNotes[userId] || {}),
+      ...patch,
+    };
+    setFriendNotes((prev) => ({
+      ...prev,
+      [userId]: nextPayload,
+    }));
+    if (supabase && authUserId) {
+      const { error } = await supabase.from("friend_notes").upsert(
+        {
+          user_id: authUserId,
+          target_user_id: userId,
+          wish: nextPayload.wish || "",
+          favorite: nextPayload.favorite || "",
+        },
+        { onConflict: "user_id,target_user_id" },
+      );
+      if (error) {
+        setToastMessage("Anteckning sparades lokalt (db-fel).");
+        return;
+      }
+    }
+    setToastMessage("Anteckning sparad.");
+  };
+
+  const addEntityComment = async (setter, state, entityType, entityId, text) => {
+    const value = text.trim();
+    if (!value) return;
+    let comment = {
+      id: createId(),
+      user_id: currentUser.id || "guest",
+      user_name: currentUser.full_name || currentUser.username || "Användare",
+      content: value,
+      upvotes: 0,
+      downvotes: 0,
+      voted_by: {},
+      created_at: new Date().toISOString(),
+    };
+    if (supabase && authUserId) {
+      const { data, error } = await supabase
+        .from("entity_comments")
+        .insert({
+          entity_type: entityType,
+          entity_id: entityId,
+          user_id: authUserId,
+          user_name: comment.user_name,
+          content: value,
+          upvotes: 0,
+          downvotes: 0,
+        })
+        .select(
+          "id,entity_type,entity_id,user_id,user_name,content,upvotes,downvotes,created_at",
+        )
+        .single();
+      if (!error && data) {
+        comment = { ...data, voted_by: {} };
+      }
+    }
+    setter({
+      ...state,
+      [entityId]: [comment, ...(state[entityId] || [])],
+    });
+  };
+
+  const voteEntityComment = async (
+    setter,
+    state,
+    entityType,
+    entityId,
+    commentId,
+    voteType,
+  ) => {
+    if (!canInteract) return;
+    const voter = currentUser.id || authUserId || "anon";
+    const target = (state[entityId] || []).find((c) => c.id === commentId);
+    if (!target) return;
+    if (supabase && authUserId) {
+      const { error } = await supabase.from("entity_comment_votes").insert({
+        comment_id: commentId,
+        entity_type: entityType,
+        voter_id: authUserId,
+        vote_type: voteType,
+      });
+      if (error) return;
+      await supabase
+        .from("entity_comments")
+        .update({
+          upvotes: target.upvotes + (voteType === "up" ? 1 : 0),
+          downvotes: target.downvotes + (voteType === "down" ? 1 : 0),
+        })
+        .eq("id", commentId);
+    }
+    setter({
+      ...state,
+      [entityId]: (state[entityId] || []).map((comment) => {
+        if (comment.id !== commentId) return comment;
+        if (comment.voted_by?.[voter]) return comment;
+        const nextVotes = { ...(comment.voted_by || {}), [voter]: voteType };
+        return {
+          ...comment,
+          voted_by: nextVotes,
+          upvotes: comment.upvotes + (voteType === "up" ? 1 : 0),
+          downvotes: comment.downvotes + (voteType === "down" ? 1 : 0),
+        };
+      }),
+    });
   };
 
   const backToPrevious = () => {
@@ -703,14 +1004,36 @@ export default function KnottzApp() {
   };
 
   // Gå med/lämna grupp
-  const toggleGroupMembership = (groupId) => {
+  const toggleGroupMembership = async (groupId) => {
     if (!canInteract) return;
+    const target = groups.find((group) => group.id === groupId);
+    if (
+      supabase &&
+      authUserId &&
+      target &&
+      !String(groupId).startsWith("g")
+    ) {
+      if (target.is_member) {
+        await supabase
+          .from("community_group_members")
+          .delete()
+          .eq("group_id", groupId)
+          .eq("user_id", authUserId);
+      } else {
+        await supabase.from("community_group_members").upsert(
+          {
+            group_id: groupId,
+            user_id: authUserId,
+          },
+          { onConflict: "group_id,user_id" },
+        );
+      }
+    }
     setGroups(
       groups.map((g) => {
         if (g.id === groupId) {
           const nextMember = !g.is_member;
           if (nextMember) {
-            _setJoinedGroupFlag(true);
             localStorage.setItem("knottz_joined_group", "1");
           }
           return {
@@ -722,6 +1045,109 @@ export default function KnottzApp() {
         return g;
       }),
     );
+  };
+
+  const createGroup = async () => {
+    const name = newGroupName.trim();
+    if (!name) return;
+    const nextGroup = {
+      id: createId(),
+      name,
+      description: newGroupDescription.trim() || "Ny grupp",
+      icon: "💬",
+      members: 1,
+      is_member: true,
+    };
+    if (supabase && authUserId) {
+      const { data, error } = await supabase
+        .from("community_groups")
+        .insert({
+          name: nextGroup.name,
+          description: nextGroup.description,
+          icon: nextGroup.icon,
+          created_by: authUserId,
+        })
+        .select("id,name,description,icon")
+        .single();
+      if (!error && data) {
+        nextGroup.id = data.id;
+        await supabase.from("community_group_members").upsert(
+          {
+            group_id: data.id,
+            user_id: authUserId,
+          },
+          { onConflict: "group_id,user_id" },
+        );
+      }
+    }
+    setGroups((prev) => [nextGroup, ...prev]);
+    setNewGroupName("");
+    setNewGroupDescription("");
+    setShowGroupPicker(false);
+    setToastMessage("Gruppen är skapad.");
+  };
+
+  const addMustHaveComment = (itemId) => {
+    if (!canInteract) return;
+    const text = pendingMustHaveComment[itemId] || "";
+    if (!text.trim()) return;
+    addEntityComment(
+      setMustHaveComments,
+      mustHaveComments,
+      "musthave",
+      itemId,
+      text,
+    );
+    setPendingMustHaveComment((prev) => ({ ...prev, [itemId]: "" }));
+  };
+
+  const addTipComment = (tipId) => {
+    if (!canInteract) return;
+    const text = pendingTipComment[tipId] || "";
+    if (!text.trim()) return;
+    addEntityComment(
+      setTipComments,
+      tipComments,
+      "tip",
+      tipId,
+      text,
+    );
+    setPendingTipComment((prev) => ({ ...prev, [tipId]: "" }));
+  };
+
+  const submitCelebrityRumor = ({ celeb_name, details, source }) => {
+    const tip = {
+      id: createId(),
+      celeb_name,
+      details,
+      source,
+      status: "pending",
+      created_at: new Date().toISOString(),
+      created_by: authUserId || "guest",
+    };
+    if (supabase && authUserId) {
+      supabase
+        .from("celebrity_tips")
+        .insert({
+          celeb_name,
+          details,
+          source,
+          status: "pending",
+          created_by: authUserId,
+        })
+        .then(async ({ error }) => {
+          if (error) {
+            setCelebrityRumors((prev) => [tip, ...prev]);
+            setToastMessage("Tipset sparades lokalt. Granskning sker senare.");
+            return;
+          }
+          await loadCelebrityTips();
+          setToastMessage("Tipset är skickat för granskning.");
+        });
+      return;
+    }
+    setCelebrityRumors((prev) => [tip, ...prev]);
+    setToastMessage("Tipset sparades lokalt.");
   };
 
   // Skicka meddelande
@@ -831,9 +1257,10 @@ export default function KnottzApp() {
   };
 
   const handleProfileSave = async () => {
-    if (!authUserId) return;
+    const effectiveUserId = authUserId || currentUser.id || "local";
+    setProfileSaving(true);
     const payload = {
-      user_id: authUserId,
+      user_id: effectiveUserId,
       display_name: currentUser.full_name || "",
       location: currentUser.location || "",
       bio: currentUser.bio || "",
@@ -844,14 +1271,9 @@ export default function KnottzApp() {
       has_children: currentUser.has_children,
       is_private: profilePrivacy === "private",
     };
-    if (supabase) {
-      await supabase
-        .from("profiles")
-        .upsert(payload, { onConflict: "user_id" });
-    }
-
     const cached = {
       ...currentUser,
+      id: effectiveUserId,
       full_name: payload.display_name,
       location: payload.location,
       bio: payload.bio,
@@ -862,20 +1284,46 @@ export default function KnottzApp() {
       has_children: payload.has_children,
       is_private: payload.is_private,
     };
-    localStorage.setItem(
-      `knottz_profile_cache_${authUserId}`,
-      JSON.stringify(cached),
-    );
-    setCurrentUser(cached);
-    setUsers((prev) =>
-      prev.map((u) => (u.id === currentUser.id ? { ...u, ...cached } : u)),
-    );
-    loadProfiles();
-    setShowProfileModal(false);
-    setShowQuickStart(false);
-    localStorage.setItem("knottz_onboarded", "1");
-    setView("list");
-    setToastMessage("Profilen är sparad.");
+    try {
+      if (supabase && authUserId) {
+        const { error } = await supabase
+          .from("profiles")
+          .upsert(payload, { onConflict: "user_id" });
+        if (error) throw error;
+      }
+      localStorage.setItem(
+        `knottz_profile_cache_${effectiveUserId}`,
+        JSON.stringify(cached),
+      );
+      localStorage.setItem("knottz_profile_cache_local", JSON.stringify(cached));
+      setCurrentUser(cached);
+      setUsers((prev) => {
+        const exists = prev.some((u) => u.id === effectiveUserId);
+        if (exists) {
+          return prev.map((u) =>
+            u.id === effectiveUserId ? { ...u, ...cached } : u,
+          );
+        }
+        return [cached, ...prev];
+      });
+      if (supabase && authUserId) {
+        await loadProfiles();
+      }
+      setShowProfileModal(false);
+      setShowQuickStart(false);
+      localStorage.setItem("knottz_onboarded", "1");
+      setToastMessage("Profilen är sparad.");
+    } catch {
+      localStorage.setItem(
+        `knottz_profile_cache_${effectiveUserId}`,
+        JSON.stringify(cached),
+      );
+      localStorage.setItem("knottz_profile_cache_local", JSON.stringify(cached));
+      setCurrentUser(cached);
+      setToastMessage("Kunde inte spara i databasen. Sparade lokalt.");
+    } finally {
+      setProfileSaving(false);
+    }
   };
 
   return (
@@ -1376,6 +1824,7 @@ export default function KnottzApp() {
             {[
               { id: "list", label: "Lista" },
               { id: "inspiration", label: "Inspiration" },
+              { id: "celebs", label: "Kändisar" },
             ].map(({ id, label }) => (
               <button
                 key={id}
@@ -1502,6 +1951,7 @@ export default function KnottzApp() {
         {view === "list" && (
           <ListView
             users={users}
+            friendNotes={friendNotes}
             listFilter={listFilter}
             setListFilter={setListFilter}
             renderAvatar={renderAvatar}
@@ -1573,6 +2023,18 @@ export default function KnottzApp() {
               </div>
             </div>
           </div>
+        )}
+        {view === "celebs" && (
+          <CelebWatchView
+            celebrities={celebrities}
+            rumors={celebrityRumors}
+            onSubmitRumor={submitCelebrityRumor}
+            isAuthenticated={isAuthenticated}
+            onRequireAuth={() => {
+              setAuthMode("signup");
+              setView("auth");
+            }}
+          />
         )}
         {view === "groups" && (
           <div>
@@ -2169,8 +2631,9 @@ export default function KnottzApp() {
                   <button
                     className="btn btn-primary"
                     onClick={handleProfileSave}
+                    disabled={profileSaving}
                   >
-                    Spara
+                    {profileSaving ? "Sparar..." : "Spara"}
                   </button>
                 </div>
                 </div>
@@ -2193,7 +2656,7 @@ export default function KnottzApp() {
                     </h3>
                     <div style={{ color: "#6c6b7a" }}>
                       Du är {onboardingProgress}% klar. När du når 100% är din
-                      profil klar.
+                      profil helt uppsatt.
                     </div>
                   </div>
                   <button
@@ -2370,6 +2833,102 @@ export default function KnottzApp() {
                   );
                 })()}
               </div>
+            </div>
+
+            <div className="section card">
+              <div className="card-head">
+                <h3 style={{ margin: 0 }}>Mina grupper</h3>
+                <button
+                  className="btn btn-soft"
+                  onClick={() => setShowGroupPicker((prev) => !prev)}
+                >
+                  +
+                </button>
+              </div>
+              <div className="stack" style={{ marginTop: "0.75rem" }}>
+                {groups.filter((group) => group.is_member).length === 0 ? (
+                  <div style={{ color: "#6c6b7a" }}>
+                    Du är inte med i någon grupp ännu.
+                  </div>
+                ) : (
+                  groups
+                    .filter((group) => group.is_member)
+                    .map((group) => (
+                      <div key={group.id} className="mini-row">
+                        <div>
+                          <div className="mini-title">{group.name}</div>
+                          <div className="mini-sub">
+                            {group.members} medlemmar
+                          </div>
+                        </div>
+                        <button
+                          className="btn btn-soft"
+                          onClick={() => setView("groups")}
+                        >
+                          Öppna
+                        </button>
+                      </div>
+                    ))
+                )}
+              </div>
+
+              {showGroupPicker && (
+                <div className="card card-border" style={{ marginTop: "1rem" }}>
+                  <div className="stack">
+                    <input
+                      className="input"
+                      placeholder="Sök grupp..."
+                      value={groupSearch}
+                      onChange={(e) => setGroupSearch(e.target.value)}
+                    />
+                    <div className="stack" style={{ maxHeight: 220, overflowY: "auto" }}>
+                      {groups
+                        .filter((group) => {
+                          if (!groupSearch.trim()) return true;
+                          return `${group.name} ${group.description}`
+                            .toLowerCase()
+                            .includes(groupSearch.toLowerCase());
+                        })
+                        .map((group) => (
+                          <div key={group.id} className="mini-row">
+                            <div>
+                              <div className="mini-title">{group.name}</div>
+                              <div className="mini-sub">{group.description}</div>
+                            </div>
+                            <button
+                              className={`btn ${group.is_member ? "btn-ghost" : "btn-primary"}`}
+                              onClick={() => toggleGroupMembership(group.id)}
+                            >
+                              {group.is_member ? "Lämna" : "Gå med"}
+                            </button>
+                          </div>
+                        ))}
+                    </div>
+                    <div className="card card-border">
+                      <div style={{ fontWeight: 700, marginBottom: "0.5rem" }}>
+                        Skapa egen grupp
+                      </div>
+                      <div className="stack">
+                        <input
+                          className="input"
+                          placeholder="Gruppnamn"
+                          value={newGroupName}
+                          onChange={(e) => setNewGroupName(e.target.value)}
+                        />
+                        <input
+                          className="input"
+                          placeholder="Kort beskrivning"
+                          value={newGroupDescription}
+                          onChange={(e) => setNewGroupDescription(e.target.value)}
+                        />
+                        <button className="btn btn-primary" onClick={createGroup}>
+                          Skapa grupp
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {profileTab === "messages" && (
@@ -2730,6 +3289,20 @@ export default function KnottzApp() {
             toggleMustHaveVote={toggleMustHaveVote}
             mustHaveRequests={mustHaveRequests}
             setMustHaveRequests={setMustHaveRequests}
+            comments={mustHaveComments}
+            pendingComments={pendingMustHaveComment}
+            setPendingComments={setPendingMustHaveComment}
+            onAddComment={addMustHaveComment}
+            onVoteComment={(itemId, commentId, voteType) =>
+              voteEntityComment(
+                setMustHaveComments,
+                mustHaveComments,
+                "musthave",
+                itemId,
+                commentId,
+                voteType,
+              )
+            }
           />
         )}
         {view === "tips" && (
@@ -2742,6 +3315,20 @@ export default function KnottzApp() {
             tips={tips}
             canInteract={canInteract}
             toggleTipVote={toggleTipVote}
+            comments={tipComments}
+            pendingComments={pendingTipComment}
+            setPendingComments={setPendingTipComment}
+            onAddComment={addTipComment}
+            onVoteComment={(tipId, commentId, voteType) =>
+              voteEntityComment(
+                setTipComments,
+                tipComments,
+                "tip",
+                tipId,
+                commentId,
+                voteType,
+              )
+            }
           />
         )}
         {view === "post" && (
@@ -2818,7 +3405,11 @@ export default function KnottzApp() {
                     </button>
                     <button
                       className="btn btn-soft"
-                      onClick={() => setSelectedPost(post.id)}
+                      onClick={() => {
+                        setPreviousView(view);
+                        setDetailId(post.id);
+                        setView("post");
+                      }}
                     >
                       {post.comments_count}
                     </button>
@@ -2872,6 +3463,49 @@ export default function KnottzApp() {
                       </div>
                     </div>
                     {user.bio && <p style={{ marginTop: "0.5rem" }}>{user.bio}</p>}
+                    <div className="card card-border">
+                      <div style={{ fontWeight: 700, marginBottom: "0.5rem" }}>
+                        Egna noteringar
+                      </div>
+                      <div className="stack">
+                        <input
+                          className="input"
+                          placeholder="Önskar sig..."
+                          value={friendNotes[user.id]?.wish || ""}
+                          onChange={(e) =>
+                            setFriendNotes((prev) => ({
+                              ...prev,
+                              [user.id]: {
+                                ...(prev[user.id] || {}),
+                                wish: e.target.value,
+                              },
+                            }))
+                          }
+                        />
+                        <input
+                          className="input"
+                          placeholder="Favoritgodis / favorit..."
+                          value={friendNotes[user.id]?.favorite || ""}
+                          onChange={(e) =>
+                            setFriendNotes((prev) => ({
+                              ...prev,
+                              [user.id]: {
+                                ...(prev[user.id] || {}),
+                                favorite: e.target.value,
+                              },
+                            }))
+                          }
+                        />
+                        <button
+                          className="btn btn-soft"
+                          onClick={() =>
+                            saveFriendNote(user.id, friendNotes[user.id] || {})
+                          }
+                        >
+                          Spara notering
+                        </button>
+                      </div>
+                    </div>
                     <div className="subnav" style={{ marginTop: "0.5rem" }}>
                       <button
                         className="btn btn-outline"
@@ -2891,9 +3525,39 @@ export default function KnottzApp() {
                         Skicka gåva
                       </div>
                       <div className="subnav">
-                        <button className="btn btn-soft">Charma</button>
-                        <button className="btn btn-soft">Presentkort</button>
-                        <button className="btn btn-soft">Blombud</button>
+                        <button
+                          className="btn btn-soft"
+                          onClick={() =>
+                            window.open(
+                              `https://charma.io/?ref=knottz&friend=${encodeURIComponent(user.full_name || "")}`,
+                              "_blank",
+                            )
+                          }
+                        >
+                          Charma
+                        </button>
+                        <button
+                          className="btn btn-soft"
+                          onClick={() =>
+                            window.open(
+                              `https://example.com/presentkort?ref=knottz&friend=${encodeURIComponent(user.full_name || "")}`,
+                              "_blank",
+                            )
+                          }
+                        >
+                          Presentkort
+                        </button>
+                        <button
+                          className="btn btn-soft"
+                          onClick={() =>
+                            window.open(
+                              `https://example.com/blombud?ref=knottz&friend=${encodeURIComponent(user.full_name || "")}`,
+                              "_blank",
+                            )
+                          }
+                        >
+                          Blombud
+                        </button>
                       </div>
                     </div>
                   </div>
