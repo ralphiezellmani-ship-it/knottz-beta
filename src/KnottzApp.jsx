@@ -5,7 +5,7 @@
 // gemenskap och kunskapsdelning. Knyt samman föräldrar lokalt och globalt!
 // ============================================================================
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { supabase } from "./supabaseClient";
 import { useSupabasePosts } from "./hooks/useSupabasePosts";
 import {
@@ -21,6 +21,7 @@ import ListView from "./views/ListView";
 import MustHavesView from "./views/MustHavesView";
 import TipsView from "./views/TipsView";
 import CelebWatchView from "./views/CelebWatchView";
+import AdminDashboardView from "./views/AdminDashboardView";
 import {
   MOCK_USERS,
   MOCK_GROUPS,
@@ -42,6 +43,10 @@ import {
 
 
 export default function KnottzApp() {
+  const ADMIN_EMAILS = (import.meta.env.VITE_ADMIN_EMAILS || "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
   const [currentUser, setCurrentUser] = useState({
     id: "",
     username: "",
@@ -60,6 +65,7 @@ export default function KnottzApp() {
   const [previousView, setPreviousView] = useState("list");
   const [detailId, setDetailId] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [authMode, setAuthMode] = useState("login"); // login, signup
   const [profilePrivacy, setProfilePrivacy] = useState("public"); // public, private
   const [authEmail, setAuthEmail] = useState("");
@@ -178,6 +184,17 @@ export default function KnottzApp() {
       return [];
     }
   });
+  const [adminStats, setAdminStats] = useState({
+    users: 0,
+    posts: 0,
+    comments: 0,
+    groups: 0,
+    groupMembers: 0,
+    pendingCelebTips: 0,
+  });
+  const [adminPendingTips, setAdminPendingTips] = useState([]);
+  const [adminRecentActivity, setAdminRecentActivity] = useState([]);
+  const [adminLoading, setAdminLoading] = useState(false);
 
   // Beräkna månad från due_date
   // getDueMonth reserved for future use
@@ -255,6 +272,7 @@ export default function KnottzApp() {
       is_private: profile?.is_private || false,
       has_children: profile?.has_children ?? null,
       household_id: profile?.household_id || null,
+      is_admin: Boolean(profile?.is_admin),
       is_new_pregnancy: true,
     };
   };
@@ -264,7 +282,7 @@ export default function KnottzApp() {
     const { data } = await supabase
       .from("profiles")
       .select(
-        "id,user_id,email,display_name,bio,avatar_url,location,expected_due_date,household_name,is_private,personal_number,has_children,household_id",
+        "id,user_id,email,display_name,bio,avatar_url,location,expected_due_date,household_name,is_private,personal_number,has_children,household_id,is_admin",
       );
     if (data && data.length) {
       setUsers(data.map(mapProfileToUser));
@@ -444,7 +462,7 @@ export default function KnottzApp() {
       const { data } = await supabase
         .from("profiles")
         .select(
-          "id,user_id,email,display_name,bio,avatar_url,location,expected_due_date,household_name,is_private,personal_number,has_children,household_id",
+          "id,user_id,email,display_name,bio,avatar_url,location,expected_due_date,household_name,is_private,personal_number,has_children,household_id,is_admin",
         )
         .eq("user_id", userId)
         .maybeSingle();
@@ -516,7 +534,7 @@ export default function KnottzApp() {
       personal_number: "",
       has_children: null,
       inviter_id: null,
-      is_admin: false,
+      is_admin: ADMIN_EMAILS.includes((pending.authEmail || "").toLowerCase()),
     };
     const { error: profileErr } = await supabase
       .from("profiles")
@@ -550,6 +568,10 @@ export default function KnottzApp() {
         const complete = profile
           ? Boolean(profile.full_name && profile.avatar_url)
           : false;
+        const adminFromEmail = ADMIN_EMAILS.includes(
+          (session.user.email || "").toLowerCase(),
+        );
+        setIsAdmin(Boolean(profile?.is_admin) || adminFromEmail);
         setView(complete ? "list" : "profile");
       }
     });
@@ -574,10 +596,15 @@ export default function KnottzApp() {
           const complete = profile
             ? Boolean(profile.full_name && profile.avatar_url)
             : false;
+          const adminFromEmail = ADMIN_EMAILS.includes(
+            (session.user.email || "").toLowerCase(),
+          );
+          setIsAdmin(Boolean(profile?.is_admin) || adminFromEmail);
           setView(complete ? "list" : "profile");
         } else {
           setIsAuthenticated(false);
           setAuthUserId(null);
+          setIsAdmin(false);
         }
       },
     );
@@ -599,6 +626,12 @@ export default function KnottzApp() {
       setShowProfileModal(true);
     }
   }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    if (view !== "admin") return;
+    loadAdminDashboard();
+  }, [view, isAdmin, loadAdminDashboard]);
 
   // menuOpen removed
 
@@ -980,6 +1013,7 @@ export default function KnottzApp() {
       await supabase.auth.signOut();
     }
     setIsAuthenticated(false);
+    setIsAdmin(false);
     setView("auth");
   };
 
@@ -1148,6 +1182,113 @@ export default function KnottzApp() {
     }
     setCelebrityRumors((prev) => [tip, ...prev]);
     setToastMessage("Tipset sparades lokalt.");
+  };
+
+  const loadAdminDashboard = useCallback(async () => {
+    if (!supabase || !isAdmin) return;
+    setAdminLoading(true);
+    try {
+      const countQuery = async (table, filterKey, filterValue) => {
+        let query = supabase.from(table).select("id", { count: "exact", head: true });
+        if (filterKey) query = query.eq(filterKey, filterValue);
+        const { count } = await query;
+        return count || 0;
+      };
+
+      const [usersCount, commentsCount, groupsCount, groupMembersCount, pendingTipsCount] =
+        await Promise.all([
+          countQuery("profiles"),
+          countQuery("entity_comments"),
+          countQuery("community_groups"),
+          countQuery("community_group_members"),
+          countQuery("celebrity_tips", "status", "pending"),
+        ]);
+
+      const { data: pendingTips } = await supabase
+        .from("celebrity_tips")
+        .select("id,celeb_name,details,source,status,created_at")
+        .eq("status", "pending")
+        .order("created_at", { ascending: false })
+        .limit(25);
+
+      const [recentProfilesRes, recentCommentsRes, recentTipsRes] = await Promise.all([
+        supabase
+          .from("profiles")
+          .select("id,display_name,created_at")
+          .order("created_at", { ascending: false })
+          .limit(8),
+        supabase
+          .from("entity_comments")
+          .select("id,user_name,entity_type,created_at")
+          .order("created_at", { ascending: false })
+          .limit(8),
+        supabase
+          .from("celebrity_tips")
+          .select("id,celeb_name,status,created_at")
+          .order("created_at", { ascending: false })
+          .limit(8),
+      ]);
+
+      const recentProfiles = (recentProfilesRes.data || []).map((row) => ({
+        id: `p-${row.id}`,
+        title: `Ny profil: ${row.display_name || "Användare"}`,
+        meta: "Registrering",
+        date: new Date(row.created_at).toLocaleDateString("sv-SE"),
+        ts: new Date(row.created_at).getTime(),
+      }));
+      const recentComments = (recentCommentsRes.data || []).map((row) => ({
+        id: `c-${row.id}`,
+        title: `Ny kommentar av ${row.user_name || "användare"}`,
+        meta: row.entity_type === "musthave" ? "Must Haves" : "Tips",
+        date: new Date(row.created_at).toLocaleDateString("sv-SE"),
+        ts: new Date(row.created_at).getTime(),
+      }));
+      const recentTips = (recentTipsRes.data || []).map((row) => ({
+        id: `t-${row.id}`,
+        title: `Kändistips: ${row.celeb_name}`,
+        meta: `Status: ${row.status}`,
+        date: new Date(row.created_at).toLocaleDateString("sv-SE"),
+        ts: new Date(row.created_at).getTime(),
+      }));
+
+      const recentActivity = [...recentProfiles, ...recentComments, ...recentTips]
+        .sort((a, b) => b.ts - a.ts)
+        .slice(0, 15)
+        .map((item) => ({
+          id: item.id,
+          title: item.title,
+          meta: item.meta,
+          date: item.date,
+        }));
+
+      setAdminStats({
+        users: usersCount,
+        posts: posts.length,
+        comments: commentsCount,
+        groups: groupsCount,
+        groupMembers: groupMembersCount,
+        pendingCelebTips: pendingTipsCount,
+      });
+      setAdminPendingTips(pendingTips || []);
+      setAdminRecentActivity(recentActivity);
+    } finally {
+      setAdminLoading(false);
+    }
+  }, [isAdmin, posts.length]);
+
+  const moderateCelebrityTip = async (tipId, status) => {
+    if (!supabase || !isAdmin) return;
+    const { error } = await supabase
+      .from("celebrity_tips")
+      .update({ status })
+      .eq("id", tipId);
+    if (error) {
+      setToastMessage("Kunde inte uppdatera tips.");
+      return;
+    }
+    setToastMessage(status === "approved" ? "Tips godkänt." : "Tips avvisat.");
+    await loadAdminDashboard();
+    await loadCelebrityTips();
   };
 
   // Skicka meddelande
@@ -1825,6 +1966,7 @@ export default function KnottzApp() {
               { id: "list", label: "Lista" },
               { id: "inspiration", label: "Inspiration" },
               { id: "celebs", label: "Kändisar" },
+              ...(isAdmin ? [{ id: "admin", label: "Admin" }] : []),
             ].map(({ id, label }) => (
               <button
                 key={id}
@@ -2034,6 +2176,15 @@ export default function KnottzApp() {
               setAuthMode("signup");
               setView("auth");
             }}
+          />
+        )}
+        {view === "admin" && isAdmin && (
+          <AdminDashboardView
+            isLoading={adminLoading}
+            stats={adminStats}
+            recentActivity={adminRecentActivity}
+            pendingCelebTips={adminPendingTips}
+            onModerateTip={moderateCelebrityTip}
           />
         )}
         {view === "groups" && (
@@ -2377,6 +2528,11 @@ export default function KnottzApp() {
                 >
                   <Settings size={18} /> Inställningar
                 </button>
+                {isAdmin && (
+                  <button className="btn btn-soft" onClick={() => setView("admin")}>
+                    Adminprofil
+                  </button>
+                )}
               </div>
               </div>
 
